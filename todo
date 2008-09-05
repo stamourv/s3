@@ -1,0 +1,29 @@
+kill list for copying
+copy-pkt->subfield
+copy-subfield->pkt ;; TODO escpescially since argument order changed, we have to get rid
+copy-u8->pkt ?
+copy-pkt->curr-conn
+pkt-byte, all vector equality functions
+
+down to 5703 bytes (from what ? something put it higher, no idea what)
+now 5652, 5641, 5626, 5602
+
+figure out dependencies for each module
+
+get rid of the -n suffixes
+
+standardize names, for instance, ue only make or create, not a mix of the 2
+
+make sure constants (as in (define x 3)) are really inlined and don't cost more that a simple 3 (simple example to prove it : use both one after the other and check size)
+
+have an a-list for mac-ip associations, kind of arp cache, but maybe without arp, when we send a packet, the address either has to be in the list, or must have sent a message before (we might have a leak if we keep all addresses)
+
+utiliser case, surtout pour dispatch de higher protocols
+
+have vector field equality directly in the vm
+
+test everything to make sure it works
+
+put this version into git
+
+when we bind a port, say for which address, or leave for everyone by default ?

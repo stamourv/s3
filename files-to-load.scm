@@ -1,0 +1,15 @@
+(include "~/recherche/s3/stack/conf.scm")
+(include "~/recherche/s3/stack/utilities.scm")
+(include "~/recherche/s3/stack/stack-env.scm")
+(include "~/recherche/s3/stack/pkt.scm")
+(include "~/recherche/s3/stack/port.scm")
+(include "~/recherche/s3/stack/conn.scm")
+(include "~/recherche/s3/stack/arp.scm")
+(include "~/recherche/s3/stack/rarp.scm")
+(include "~/recherche/s3/stack/icmp.scm")
+(include "~/recherche/s3/stack/tcp.scm")
+(include "~/recherche/s3/stack/udp.scm")
+(include "~/recherche/s3/stack/ip.scm")
+(include "~/recherche/s3/stack/eth.scm")
+;; TODO find a real order, and include what's necessary in each file, make sure there are no cycles. this ad-hoc including is ugly
+;; TODO have relative path ?
