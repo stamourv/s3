@@ -26,8 +26,7 @@
   ;; TODO shouldn't we also subtract the length of the ip header ? and options ?
   (if (valid-tcp-checksum?)
       (let ((port (search-port
-		   (+ (* 256 (u8vector-ref pkt tcp-dst-portnum))
-		      (u8vector-ref pkt (+ tcp-dst-portnum 1)))
+		   (pkt-ref-2 tcp-dst-portnum)
 		   tcp-ports)))
 	(if (and port (pass-app-filter? tcp-src-portnum port))
 	    ;; TODO use a not so the failure is closer to the condition ?
@@ -44,7 +43,7 @@
 (define (compute-tcp-pseudo-checksum)
   (let ((tcp-len (- (pkt-ref-2 ip-length)
                     (get-ip-hdr-len))))
-    (pseudo-checksum (list (u8vector-ref pkt ip-protocol) ;; TODO use a pkt-ref-field, and then vector->list ?
+    (pseudo-checksum (list (u8vector-ref pkt ip-protocol) ;; TODO use a u8vector-ref-field pkt, and then vector->list ?
                            tcp-len ;; TODO shouldn't we simply add this range to the real checksum ? maybe since then length is not there yet, it can cause problems
                            (pkt-ref-2 ip-src-IP)
                            (pkt-ref-2 (+ ip-src-IP 2))
@@ -52,8 +51,8 @@
                            (pkt-ref-2 (+ ip-dst-IP 2)))
                      0)))
 (define (compute-tcp-checksum)
-  (pkt-checksum (ip-offset 0)
-                (+ (eth-offset 0) (pkt-ref-2 ip-length))
+  (pkt-checksum tcp-header
+                (+ ip-header (pkt-ref-2 ip-length)) ;; TODO known statically ? no options
                 (compute-tcp-pseudo-checksum)))
 
 
@@ -78,7 +77,7 @@
 
 ;; to get the peer's segment's maximum size encoded in the packet
 (define (get-peer-mss pkt-idx)
-  (cond ((or (>= (- pkt-idx tcp-header) ; TODO was (+ (get-ip-hdr-len) (eth-offset 0)), but tcp-header considers ip options
+  (cond ((or (>= (- pkt-idx tcp-header) ; TODO was (+ (get-ip-hdr-len) ip-header), but tcp-header considers ip options
                  (get-tcp-hdr-len))
              (= (u8vector-ref pkt pkt-idx) 0)) ; we reached the end of the option list
          (conn-info-set! curr-conn tcp-peer-mss tcp-output-size))
@@ -336,7 +335,7 @@
 (define (simple-receiver headers-size) ;; TODO used only once, in the previous function, but maybe use it for tcp ?
   (let ((in-amount (input? headers-size)))
     (if in-amount 
-	(begin (input-has-succeeded? in-amount (tcp-data-start))
+	(begin (input-has-succeeded? in-amount tcp-data)
 	       (set-curr-timestamp!)
 	       in-amount)
 	#f)))
@@ -361,7 +360,7 @@
         (begin
 	  (copy-buffer->u8vector! (get-output curr-conn)
 				  pkt ; copy data to connection output buffer
-				  (tcp-data-start) ;; TODO why function ? find out
+				  tcp-data
 				  out-amount)
 	  ;; TODO last line was in simple-transmitter, but since it was only used once, it ended up inlined, the clearing part was removed since it was always passed #f (actually the old udp did pass #t, but it's gone anyways)
           (increment-curr-conn-n tcp-attempts-count 1 1)
@@ -382,7 +381,6 @@
                                    flags
                                    receiver-on?
                                    transmitter-on? )
-  (set! ip-opt-len 0)
   (u8vector-set! pkt tcp-flags flags)
   (if (and receiver-on? (tcp-receiver)) (turn-tcp-flag-on ACK))
   (set! tcp-opt-len (if options (u8vector-length options) 0))

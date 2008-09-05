@@ -12,7 +12,7 @@
 ;; the procedure called when a new ethernet frame is received.
 (define (eth-pkt-in)
   (if (valid-MAC-addr?)
-      (let ((higher-protocol (pkt-ref-field-2 eth-type)))
+      (let ((higher-protocol (u8vector-ref-field pkt eth-type 2)))
 	(cond ((equal? higher-protocol eth-type-IPv4) (ip-pkt-in))
 	      ((equal? higher-protocol eth-type-ARP)  (arp-pkt-in))
 	      ((equal? higher-protocol eth-type-RARP) (rarp-pkt-in))

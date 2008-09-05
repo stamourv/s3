@@ -25,8 +25,6 @@
 ;; TODO we have a problem if we start the stack before we get any packets, since we process empty packets
 (define (process-packet)
   (debug "process-packet\n")
-  (set! ip-opt-len 0) ;; TODO we don't support options, get rid ?
-  (set! tcp-opt-len 0)
   (set! data-len 0)
   (eth-pkt-in) ; the response is sent somewhere within
   (set! curr-port #f)
@@ -39,8 +37,8 @@
   ;; (set! test-pkt (make-u8vector len 0))
   ;;          (calculate-eth-crc (+ 4 len)) ; TODO watch out for off by one
   ;; TODO seems the driver does it for us, clean up this function
-  ;; (set! test-pkt (pkt-ref-field-n 0 (+ 4 len))) ; +4 is for the CRC
-  ; (set! test-pkt (pkt-ref-field-n 0 len))
+  ;; (set! test-pkt (u8vector-ref-field pkt 0 (+ 4 len))) ; +4 is for the CRC
+  ; (set! test-pkt (u8vector-ref-field pkt 0 len))
   (debug "send\n")
   (send-packet-from-u8vector pkt len)
   )

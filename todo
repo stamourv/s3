@@ -6,7 +6,7 @@ copy-pkt->curr-conn
 pkt-byte, all vector equality functions
 
 down to 5703 bytes (from what ? something put it higher, no idea what)
-now 5652, 5641, 5626, 5602, 5570
+now 5652, 5641, 5626, 5602, 5570, 5442, 5424, 5413, 5414
 
 figure out dependencies for each module
 
@@ -27,5 +27,7 @@ test everything to make sure it works
 put this version into git
 
 when we bind a port, say for which address, or leave for everyone by default ?
+
+all mentions of options were removed, go see orig to see what there was
 
 CHANGE BUFFERS TO HAVE 2 POINTERS

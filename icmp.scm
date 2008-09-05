@@ -19,7 +19,7 @@
 ;; called when an icmp datagram is received
 (define (icmp-pkt-in) ;; TODO we do have a pattern for protocols, do some checks, then dispatch to an upper level function. the generic reception functions were a pita, maybe try a macro ?
   (if (valid-checksum? (compute-icmp-checksum))
-      (let ((op (pkt-ref-field-2 icmp-type)))
+      (let ((op (u8vector-ref-field pkt icmp-type 2)))
         (cond ((equal? op icmp-echo-request) ;; TODO do comparison with numbers and define op with a pkt-ref-2, then compare with =, or use equal-case like eth
                (icmp-send-echo-reply))
               ((equal? op icmp-address-mask-request)
@@ -30,8 +30,8 @@
 ;; TODO send error cases to applications, as special tokens when they do the next operation
 
 (define (compute-icmp-checksum)
-  (pkt-checksum (ip-offset 0)
-                (+ (eth-offset 0) (pkt-ref-2 ip-length))
+  (pkt-checksum icmp-header
+                (+ ip-header (pkt-ref-2 ip-length)) ;; TODO known statically ? no options
                 0))
 
 
@@ -72,19 +72,9 @@
 (define (copy-ip-hdr) (move-in-pkt-n ip-header icmp-data 20))
 
 
-;; replaces an ip-option byte by the value of 1
-(define (pad-ip-options idx n) ;; TODO how it this used ? what's it supposed to do, is it even called since we never seem to put any options in our ip datagrams, this might have been broken by changes to pkt-set!
-  (if (< idx n)
-      (begin (u8vector-set! pkt (+ ip-options idx) 1)
-             (pad-ip-options (+ idx 1) n))
-      (u8vector-set! pkt (+ ip-options n) 0))) ;; TODO what for ? does it signal the end of options ? how can we make sure that we have only 4 byte multiples for options ?
-
-
 ;; TODO clean this up, should end up calling ip-encapsulation, which sould in turn call eth-encapsulation
 ;; data-amount is excluding icmp header
 (define (icmp-encapsulation key data-amount)
-  (if (> ip-opt-len 0)
-      (pad-ip-options 0 ip-opt-len)) ;; TODO ok, what's that
   (copy-u8->pkt-2 icmp-type key)
   (integer->pkt-2 0 icmp-checksum)
   (integer->pkt-2 (reverse-checksum (compute-icmp-checksum)) ; TODO do we always have to reverse when we send ? if so, why not make it the deafult ? then we could make validchecksum check if it's 0, no ?

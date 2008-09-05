@@ -21,7 +21,6 @@
 
 ;; called when an IP datagram is received
 (define (ip-pkt-in)
-  (set! ip-opt-len (- (get-ip-hdr-len) 20)) ; a normal header is 20 bytes
   ;; TODO do a macro to abstract reception ?
   ;; TODO all these nots are quite ugly, also, do we inline the body of these checks ?
   (cond ((not (valid-ip-addr?)) #f)
@@ -47,13 +46,8 @@
       (=pkt-u8-4? ip-dst-IP broadcast-IP)))
 
 (define (valid-ip-checksum?) (valid-checksum? (compute-ip-checksum)))
-(define (compute-ip-checksum)
-  (pkt-checksum (eth-offset 0)
-                (+ (eth-offset 0) 20)
-                (compute-ip-options-checksum))) ;; TODO why not just calculate the checksum of the whole header + options at the same time ?
-(define (compute-ip-options-checksum)
-  (let* ((start (+ (eth-offset 0) 20)))
-    (pkt-checksum start (+ start ip-opt-len) 0)))
+(define (compute-ip-checksum) (pkt-checksum ip-header ip-options 0)) ;; TODO why not just calculate the checksum of the whole header + options at the same time ?
+;; TODO now that we don't have options, maybe this pseudo stuff is obsolete, make sure checksum is still valid
 
 (define (alive?) (> (u8vector-ref pkt ip-ttl) 0))
 

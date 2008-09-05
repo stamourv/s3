@@ -10,8 +10,7 @@
 ;; TODO should we keep the current packet's length somewhere ?
 
 ;; TODO options are not supported as of now
-(define ip-opt-len 0) ; length of ip options for this particular packet
-(define tcp-opt-len 0)
+(define tcp-opt-len 0) ;; TODO are TCP options supported ?
 (define data-len 0)
 
 
@@ -24,7 +23,6 @@
 (define eth-src-MAC 6)
 (define eth-type    12)
 (define eth-data    14)
-(define (eth-offset n) (+ eth-data n))
 
 ;; ARP header
 (define arp-header 14)
@@ -53,22 +51,20 @@
 (define ip-checksum 24)
 (define ip-src-IP   26)
 (define ip-dst-IP   30)
-(define ip-options  34)
-(define (ip-offset n) (+ ip-options ip-opt-len n)) ;; TODO what about options ? added them, but they weren't counted originally (actually, they were added by pkt-ref, which was horribly ugly, got rid of that, and that cleaned a few other things as well)
+(define ip-options  34) ;; TODO not supported as of now
 
-;; TODO everything after ip would have to be functions (because of options that change), instead, let's try to have functions like ip-data-ref, tcp-data-ref, etc that add the offset for us
+;; TODO everything after ip would have to be functions (because of options that change), instead, let's try to have functions like ip-data-ref, tcp-data-ref, etc that add the offset for us. that is, when weadd options
 
 ;; ICMP message
-(define icmp-type 34) ;; TODO no options are considered
+(define icmp-header 34)
+(define icmp-type 34)
 (define icmp-code 35)
 (define icmp-checksum 36)
 (define icmp-options 38)
 (define icmp-data 42) ; TODO this used to be 4, but now we consider the header to be 8 bytes, with 4 of options, that can be used differently according to each operation
-(define (icmp-offset i) (+ i icmp-data)) ;; TODO maybe a macro ? this pattern appears quite often
-;; TODO are these offset functions used at all ?
 
 ;; TCP header
-(define tcp-header       34) ;; TODO should all these be function ? their value might change due to the value of option lengths
+(define tcp-header       34)
 (define tcp-src-portnum  34)
 (define tcp-dst-portnum  36)
 (define tcp-seqnum       38)
@@ -78,9 +74,8 @@
 (define tcp-window       48)
 (define tcp-checksum     50)
 (define tcp-urgentptr    52)
-(define tcp-options      54)
-(define (tcp-offset n)   (+ tcp-options tcp-opt-len n))
-(define (tcp-data-start) 54) ;; TODO function ? a vlaue could be ok, I guess
+(define tcp-options      54) ;; TODO do we support options ? looking at these offsets, looks like we don't
+(define tcp-data         54)
 
 ;; UDP header
 (define udp-header      34)
@@ -89,29 +84,19 @@
 (define udp-length      38)
 (define udp-checksum    40)
 (define udp-data        42)
-(define (udp-offset i)  (+ i udp-data))
 
 
-;; sets vect as the current packet, but keeps the original size, in the case we
-;; have a response longer than the original message
-;; TODO there's a similar function in the original tests, use it instead ?
+;; sets vect as the current packet
 (define (whole-pkt-set! vect)
   (u8vector-copy! vect 0 pkt 0 (u8vector-length vect)))
 
 
 ;; integer value of a 2 bytes packet subfield
 ;; TODO why do we return an integer, why not a field ? might be more intuitive, but might be more costly
-;; TODO have u8vector-ref-2 instead
+;; TODO have u8vector-ref-2 instead, maybe not, since integer refs on vectors is used on portnums, but I don't see where else
+;; TODO say in the name it returns an int
 (define (pkt-ref-2 i)
   (+ (* 256 (u8vector-ref pkt i)) (u8vector-ref pkt (+ i 1))))
-
-
-;; TODO eventually use this instead of pkt-ref-n
-(define (pkt-ref-field-n i n) (u8vector-ref-field pkt i n)) ;; TODO be a simple call to the general ref-field
-(define (pkt-ref-field-2 i) (pkt-ref-field-n i 2))
-(define (pkt-ref-field-4 i) (pkt-ref-field-n i 4)) ;; TODO used once
-(define (pkt-ref-field-6 i) (pkt-ref-field-n i 6)) ;; TODO used once
-
 
 ;; copies data from a subfield to the packet (n = subfield length)
 (define (copy-subfield->pkt-n src i-src i-pkt n)

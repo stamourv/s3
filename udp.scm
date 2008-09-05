@@ -8,14 +8,13 @@
 (define (udp-pkt-in)
   (if (valid-udp-checksum?)
       (let ((port (search-port
-		   (+ (* 256 (u8vector-ref pkt udp-dst-portnum))
-		      (u8vector-ref pkt (+ udp-dst-portnum 1)))
+		   (pkt-ref-2 udp-dst-portnum)
 		   udp-ports)))
 	(if (and port (pass-app-filter? udp-src-portnum port))
 	    ((conf-ref port conf-reception)
-	     (pkt-ref-field-4 ip-src-IP)
-	     (u8vector->portnum (pkt-ref-field-2 udp-src-portnum))
-	     (pkt-ref-field-n udp-data (- (pkt-ref-2 udp-length) 8)))
+	     (u8vector-ref-field pkt ip-src-IP 4)
+	     (u8vector->portnum (u8vector-ref-field pkt udp-src-portnum 2))
+	     (u8vector-ref-field pkt udp-data (- (pkt-ref-2 udp-length) 8)))
 	    (icmp-send-port-unreachable-error))))) ; no app listens to this port
 
 (define (valid-udp-checksum?)

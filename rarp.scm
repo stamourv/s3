@@ -26,4 +26,4 @@
 	(copy-u8->pkt-4 arp-sip my-IP) ;; TODO abstract similarities between arp and rarp
 	(ethernet-encapsulation arp-length)))) ; TODO error case
 
-(define (rarp-get-ip) (cdr (assoc (pkt-ref-field-6 arp-shadr) rarp-mac-ip-alist)))
+(define (rarp-get-ip) (cdr (assoc (u8vector-ref-field pkt arp-shadr 6) rarp-mac-ip-alist)))
