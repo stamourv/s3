@@ -177,7 +177,7 @@
 (define (tcp-established)
   (let ((phase2
          (lambda ()
-           (if (and (inclusive-tcp-flag? ACK) (valid-acknum?))
+           (if (and (inclusive-tcp-flag? ACK) (valid-acknum?)) ; we have received an ACK, we can clear the data that was acknowledged
                (buf-clear-n (get-output curr-conn) (self-acknowledgement)))
            (if (inclusive-tcp-flag? FIN)
                (begin (pass-to-another-state tcp-close-wait #f #t #t)
@@ -345,8 +345,11 @@
 ;Yes : we transmit input datas and return the number of bytes.
 ;No : returns #f
 (define (input-has-succeeded? in-amount pkt-idx)
-  (if (<= in-amount (buf-free-space (get-input curr-conn)))
-      (begin (copy-pkt->curr-input-n pkt-idx in-amount)
+  (if (<= in-amount (buf-free-space (get-input curr-conn))) ;; TODO maybe put as much as we can and only ack that ? or would it be too complex ?
+      (begin (copy-u8vector->buffer! pkt ; copy data to connection input buffer
+				     pkt-idx
+				     (get-input curr-conn)
+				     in-amount)
 	     (buf-inc-amount (get-input curr-conn) in-amount) 
 	     in-amount)
       #f))
@@ -356,7 +359,10 @@
   (let ((out-amount (tcp-output?))) ;; TODO only use of tcp-output?
     (if out-amount
         (begin
-	  (copy-curr-output->pkt-n (tcp-data-start) out-amount)
+	  (copy-buffer->u8vector! (get-output curr-conn)
+				  pkt ; copy data to connection output buffer
+				  (tcp-data-start) ;; TODO why function ? find out
+				  out-amount)
 	  ;; TODO last line was in simple-transmitter, but since it was only used once, it ended up inlined, the clearing part was removed since it was always passed #f (actually the old udp did pass #t, but it's gone anyways)
           (increment-curr-conn-n tcp-attempts-count 1 1)
           (conn-info-set! curr-conn tcp-self-ack-units out-amount)))

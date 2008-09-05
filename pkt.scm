@@ -15,7 +15,7 @@
 (define data-len 0)
 
 
-;; Offsets at which
+;; packet offsets
 
 ;; TODO is there a better way ? what about a slip back-end ?
 ;; Ethernet header

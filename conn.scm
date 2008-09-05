@@ -103,8 +103,8 @@
   ;; TODO clean this up a bit, are some operations redundant ? are all necessary ?
   (let ((c (vector (make-u8vector tcp-infos-size 0)
                    #f
-                   (make-u8vector (+ tcp-input-size 2) 0)
-                   (make-u8vector (+ tcp-output-size 2) 0)
+                   (vector 0 0 (make-u8vector tcp-input-size 0))
+                   (vector 0 0 (make-u8vector tcp-output-size 0))
                    tcp-syn-recv
 		   (vector #f #f #f))))
     (add-conn-to-curr-port c)
@@ -119,37 +119,33 @@
     (set! curr-conn c)))
 
 
-;; an input/output buffers is a byte vector of length n + 2 with n being the
-;; buffer size chosen in conf.scm
-;; the first 2 bytes contain the amount of data stored in the buffer and the
-;; index of the next free space (with 0 being the first byte after the header),
-;; in that order
-(define buf-amount 0)
-(define buf-pointer 1)
-(define buf-header-size 2) ;; TODO all uses in this file
-;; TODO get rid of these, not used, but put doc comments instead
-;; TODO say somehwere that the max is 256, probably in conf.scm
-;; TODO is it a good idea to store these infos in the vector proper ? the code is more complex CHANGE IT
+;; an input/output buffers is represented as a vector
+;; -0: amount of bytes stored in the buffer (integer)
+;; -1: pointer to the next free space in the buffer (integer)
+;; -2: the buffer itself (u8vector)
+;;     the length is found in conf.scm and can be different for input and
+;;     output buffers, with a maximum of 256 bytes
+;; TODO ARGH this is all broken, we'd need 2 pointers.
+;;  for output buffer, one to show where to add the next data, and another to show the 1st unsent (or not acked)
+;; for input, one for the stack to see where it can add, and the other that shows where the app reads
+;; FIX THIS NOTHING CAN WORK WITHOUT (perhaps it does by subtrating amount, but it's disgusting)
+;; TODO for efficiency reasons, maybe keep the free space along with the amount, so we don't calculate it every time
 
-;; returns the number of actual data bytes that can be stored in the buffer
-(define (buf-size buf)
-  (- (u8vector-length buf) buf-header-size))
-;; TODO get rid if we put pointer and amount outside
+(define (buf-size buf) (u8vector-length (vector-ref 2 buf)))
+;; TODO would be faster to look at the conf for a user, we can't since we don't know if it's an input or output buffer, maybe store a flag for this ? would not really be faster than getting the length, since picobit stores it with the vector
+;; TODO maybe we can see which of the connection buffers is used
 
-(define (curr-buf-get-amount) (u8vector-ref (get-output curr-conn) buf-amount))
+(define (curr-buf-get-amount) (vector-ref (get-output curr-conn) 0))
+;; TODO change name so we see it's for an output buffer
 ;; TODO only used once, and in a debatable way
-(define (buf-inc-amount buf n) ;; TODO not really inc/dec since it's not 1 but n
-  (u8vector-set! buf buf-amount (+ (u8vector-ref buf buf-amount) n)))
-(define (buf-dec-amount buf n)
-  (u8vector-set! buf buf-amount (- (u8vector-ref buf buf-amount) n)))
+(define (buf-inc-amount buf n) (vector-set! buf 0 (+ (vector-ref buf 0) n)))
+;; TODO not really inc/dec since it's not 1 but n
+(define (buf-dec-amount buf n) (vector-set! buf 0 (- (vector-ref buf 0) n)))
 (define (buf-inc-pointer buf n)
-  (u8vector-set! buf
-                 buf-pointer
-                 (modulo (+ (u8vector-ref buf buf-pointer) n)
-                         (buf-size buf))))
+  (vector-set! buf 1 (modulo (+ (vector-ref buf 1) n) (buf-size buf))))
 
-(define (buf-free-space buf) ;; TODO this might be used for redundant checks
-  (- (u8vector-length buf) (u8vector-ref buf buf-amount) buf-header-size))
+(define (buf-free-space buf) (- (buf-size buf) (vector-ref buf 0)))
+;; TODO this might be used for redundant checks, if so, fix
 
 
 ;; clears the first n bytes of data in the buffer
@@ -157,32 +153,23 @@
 ;; of data inside
 ;; TODO change name, it's actually more of a data consumption rather than a clear, we don't erase anything
 (define (buf-clear-n buf n)
-  (if (>= n (u8vector-ref buf buf-amount))
-      (begin (u8vector-set! buf buf-amount 0)
-             (u8vector-set! buf buf-pointer 0))
+  (if (>= n (vector-ref buf 0))
+      (begin (vector-set! buf 0 0) ; set amount and pointer to 0
+             (vector-set! buf 1 0))
       (begin (buf-dec-amount buf n)
              (buf-inc-pointer buf n))))
 
-
+;; TODO move with other info functions
 (define (copy-pkt->curr-conn-info pkt-idx conn-idx n) ;; TODO standardise name
   (copy-pkt->subfield-n pkt-idx (vector-ref curr-conn 0) conn-idx n))
 (define (copy-curr-conn-info->pkt pkt-idx conn-idx n) ;; TODO standardise name
   (copy-subfield->pkt-n (vector-ref curr-conn 0) conn-idx pkt-idx n))
 
-;; data transfers from the packet to the input buffer of the current
-;; connection. No verification of input room TODO rendu ici
-(define (copy-pkt->curr-input-n pkt-idx n)
-  (copy-u8vector->buffer! pkt pkt-idx (get-input curr-conn) n))
-
-;; data transfers from the current output buffer to the packet
-;; no verification of output amount
-(define (copy-curr-output->pkt-n pkt-idx n)
-  (copy-buffer->u8vector! (get-output curr-conn) pkt pkt-idx n))
-
 
 ;; TODO we're still doomed if offset if more than 24 bits
 ;; add offset to the field of n bytes that begins at idx
 ;; TODO is this used often enough to be worth it ?
+;; TODO increment which part ? say in the name
 (define (increment-curr-conn-n idx offset n) ;; TODO weird argument order, and should have a !, since it is destructive
   (u8vector-increment-n! (vector-ref curr-conn 0) idx n offset))
 ;; TODO see if the custom setter (the one that sets the informations inside the connection) is still used, since we kind of circumvent it here (to avoid having to send a setter instead of a vector, which is ugly)
@@ -209,49 +196,38 @@
 ;; actually be read
 (define (copy-buffer->u8vector! buf vec i-vec n)
   ;; the copy starts at the current location in the buffer
-  (let ((i-buf (u8vector-ref buf buf-pointer))
-	(size (buf-size buf)))
+  (let ((i-buf (vector-ref buf 1))
+	(size (buf-size buf))
+	(buf-data (vector-ref buf 2)))
     (if (<= (+ i-buf n) size) ; wraparound
-	(let ((n1 (- size i-buf 1))) ;; TODO watch out for off-by-one
-	  (u8vector-copy! buf i-buf vec i-vec n1)
-	  (u8vector-copy! buf buf-header-size vec (+ i-vec n1) (- n n1)))
-	(u8vector-copy! buf i-buf vec i-vec n))
-    (buf-dec-amount buf n)
+	(let ((n1 (- size i-buf 1)))
+	  (u8vector-copy! buf-data i-buf vec i-vec n1)
+	  (u8vector-copy! buf-data 0 vec (+ i-vec n1) (- n n1)))
+	(u8vector-copy! buf-data i-buf vec i-vec n))
     (buf-inc-pointer buf n)))
+;; TODO put with other buffer functions
 
 ;; TODO does this obsolete other functions ?
 ;; copy n bytes of data from a vector to a circular buffer
 ;; once again, we are guaranteed that the copy is valid, that the buffer has
 ;; enough room for the new data
 ;; TODO a lot in common with the previous, find a way to merge ?
-;; returns the offset of the next empty space in the buffer.
+;; returns the offset of the next empty space in the buffer. TODO really ?
 ;; if the buffer is full, returns #f
-(define (buf-next-free-space buf)
-  (let ((n (- (u8vector-length buf) buf-header-size))
-        (amount (u8vector-ref buf buf-amount)))
-    (if (< amount n) amount #f))) ;; TODO inline
 (define (copy-u8vector->buffer! vec i-vec buf n)
-  (let ((data-size (buf-size buf))
-	(amount (u8vector-ref buf buf-amount))
-	(i-buf (buf-next-free-space buf)) ;; TODO err, actually, shouldn't it be pointer ?
-	(size (buf-size buf)))
-    (if i-buf ;; TODO since the check is made upstream, we should always have enough space
-	(begin
-	  (if (<= (+ i-buf n) size) ; wraparound
-	      (let ((n1 (- size i-buf 1))) ;; TODO off-by-one ?
-		(u8vector-copy! vec i-vec buf i-buf n1)
-		(u8vector-copy! vec (+ i-vec n1) buf buf-header-size (- n n1)))
-	      (u8vector-copy! vec i-vec buf i-buf n))
-	  (buf-inc-amount buf n))
-	#f)))
+  (let ((i-buf (vector-ref buf 1))
+	(size (buf-size buf))
+	(buf-data (vector-ref buf 2)))
+    (if (<= (+ i-buf n) size) ; wraparound
+	(let ((n1 (- size i-buf 1))) ;; TODO off-by-one ?
+	  (u8vector-copy! vec i-vec buf-data i-buf n1)
+	  (u8vector-copy! vec (+ i-vec n1) buf-data 0 (- n n1)))
+	(u8vector-copy! vec i-vec buf i-buf n))
+    (buf-inc-amount buf n)))
 
-;; Exterior manipulations on a connection
-;; If a process exterior to the stack asks to manipulate a connection,
-;; some verification has to be done before agreeing.
-;; Some data structures are shared and cannot be used at the same time
-;; by two different processes.
-;; For example, an application cannot send data if the stack is receiving a
-;; new packet because there is only one packet in the system at a time.
+
+
+;;; TCP API
 
 ;; read n input bytes from the connection c, if n is omitted, read all
 ;; TODO the changes were not tested
@@ -259,15 +235,15 @@
   (if (and (app-lock-conn c)
            (<= (conn-info-ref c conn-state) CLOSED)) ;; active or closed
       (let* ((buf (get-input c))
-	     (available (u8vector-ref buf buf-amount))
+	     (available (vector-ref buf 0)) ; amount of data in the buffer
 	     (amount (if (null? n)
 			 available
 			 (min available (car n))))
 	     (out (cond ((> amount 0)
 			 (let ((data (make-u8vector amount 0)) (i 0))
 			   (copy-buffer->u8vector! buf data 0 amount)
-			   data))
-			((= (conn-info-ref c conn-state) CLOSED) 'end-of-input) ;; TODO better end marker ? and do we really need this ? we can't really know if this is really the end of the data, maybe check both if we have no data left and the connection is closed, also we check the state twice, cache ?
+			   data)) ; TODO change one of the 2 pointers
+			((= (conn-info-ref c conn-state) CLOSED) 'end-of-input) ;; TODO we check the state twice, cache ?
 			(else #f))))
 	(app-release-conn c)
 	out)
@@ -280,7 +256,7 @@
       (let* ((buf (get-output c))
 	     (amount (min (buf-free-space buf) (u8vector-length data)))
 	     (out (if (> amount 0)
-		      (begin
+		      (begin ;; TODO change one of the 2 pointers, once we have them
 			(copy-u8vector->buffer! data 0 buf amount)
 			amount)
 		      #f))) ;; TODO distinguish from the #f from a failed lock, or do we really need to ? since in both cases, we'd have to retry the write (except if the connection is closed, how to know ?)
@@ -309,12 +285,4 @@
   (if (and (app-lock-conn c)
            (<= (conn-info-ref c conn-state) CLOSED))
       (begin (conn-info-set! c conn-state ABORTED) (app-release-conn c) #t)
-      #f))
-
-                                        ;get the general state of the connection : ACTIVE/CLOSED/ABORTED/END
-(define (get-conn-state c)
-  (if (app-lock-conn c) ;; TODO do we really need to lock for that ?
-      (let ((out (conn-info-ref c conn-state)))
-	(app-release-conn c)
-	out)
       #f))
