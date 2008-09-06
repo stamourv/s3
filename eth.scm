@@ -6,28 +6,23 @@
 (define eth-type-IPv4 '#u8(#x08 #x00))
 (define eth-type-ARP  '#u8(#x08 #x06))
 (define eth-type-RARP '#u8(#x80 #x35))
-(define eth-type-IPv6 '#u8(#x86 #xdd)) ;; TODO useless
 
 
-;; the procedure called when a new ethernet frame is received.
+;; called when a new ethernet frame is received.
 (define (eth-pkt-in)
-  (if (valid-MAC-addr?)
+  ;; is it for us ?
+  (if (or (u8vector-equal-field? pkt eth-dst-MAC broadcast-MAC 0 6)
+	  (u8vector-equal-field? pkt eth-dst-MAC my-MAC 0 6))
       (let ((higher-protocol (u8vector-ref-field pkt eth-type 2)))
 	(cond ((equal? higher-protocol eth-type-IPv4) (ip-pkt-in))
 	      ((equal? higher-protocol eth-type-ARP)  (arp-pkt-in))
 	      ((equal? higher-protocol eth-type-RARP) (rarp-pkt-in))
-	      ;; TODO use some kind of switch case ? picbit has case, change this, if it compiles well, PROBLEM, case uses eq?, we'd have to make an equal version (according to R5RS, case should use eqv?, build another with equal?)
-	      (else #f))))) ;; TODO remove ?
+	      (else #f)))
+      #f))
 
-(define (valid-MAC-addr?) ; TODO is valid the word ? our, or appropriate ?
-  (or (=pkt-u8-6? eth-dst-MAC broadcast-MAC) ;; TODO maybe inline it ?
-      (=pkt-u8-6? eth-dst-MAC my-MAC)))
-
-;; output
-;; TODO maybe have a more general version that takes he destination as parameter ?
-(define (ethernet-encapsulation len) ; TODO useful only with a connection
+;; TODO maybe have a more general version that takes the destination as parameter ? would be good for UDP
+(define (ethernet-encapsulation len)
   (u8vector-copy! pkt eth-src-MAC pkt eth-dst-MAC 6)
-  ;; (copy-curr-conn-info->pkt eth-dst-MAC conn-peer-MAC 6) ; TODO kept since some of the test cases seems to behave strangely if we simply reply to the sender
   (u8vector-copy! my-MAC 0 pkt eth-src-MAC 6)
   ;; we don't need to set the ethernet frame type, since it's the same as on
   ;; the original packet

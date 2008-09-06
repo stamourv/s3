@@ -5,19 +5,6 @@
 
 (define (false) #f) ;; TODO necessary ? used in 2 places, including with reception lower-p and these kinds of functions that might be cut
 
-;; cyclic counter, always starts at 0 and goes up to 255
-;; (define (cyclic-byte) ;; TODO is used only once, as is the 4 byte version
-;;   (let ((count 255))
-;;     (lambda () (set! count (modulo (+ count 1) 256)) count))) ; TODO use inc ? or is it optimised anyways ?
-;; TODO since picobit doesn't support set! on anything apart global variables, we'll have to do this another way
-
-;; cyclic 4-byte counter
-(define (cyclic-4-bytes)
-  (let ((count (u8vector 255 255 255 255)))
-    (lambda ()
-      (u8vector-increment-n! count 0 4 1)
-      count)))
-
 ;; generic search function, that returns the first element of a list that
 ;; obeys a predicate
 ;; TODO turn into filter, and return all ? or do we always need only 1 ?
@@ -44,13 +31,13 @@
     res))
 
 ;; increment the value represented by a subset of a byte vector by offset
-(define (u8vector-increment-n! u8 i n offset) ;; TODO is the arguemnt order the most intuitive ? it's like ref field, with the value at the end, like a set! would be, by the way, do we a have set! for subfields, or is it done in some ad-hoc way ?
-  (u8vector-increment-n!-loop u8 i (- (+ i n) 1) offset))
-(define (u8vector-increment-n!-loop u8 start i offset)
+(define (u8vector-increment! u8 i n offset) ;; TODO is the arguemnt order the most intuitive ? it's like ref field, with the value at the end, like a set! would be, by the way, do we a have set! for subfields, or is it done in some ad-hoc way ?
+  (u8vector-increment!-loop u8 i (- (+ i n) 1) offset))
+(define (u8vector-increment!-loop u8 start i offset)
   (if (>= i start)
       (begin
         (u8vector-set! u8 i (modulo (+ (u8vector-ref u8 i) offset) 256))
-        (u8vector-increment-n!-loop u8 start (- i 1) (quotient offset 256)))))
+        (u8vector-increment!-loop u8 start (- i 1) (quotient offset 256)))))
 
 
 ;; TODO compatible with picobit ? maybe in the lib
@@ -76,6 +63,8 @@
                          end
                          (add-16bits-1comp sum (pkt-ref-2 start)))
       sum))
+;; TODO we might be able to get rid of the pseudo
+;; TODO make sure the checksum algorithm is still correct
 
 ;; 1 complement addition of 16 bits words
 (define (add-16bits-1comp x y)

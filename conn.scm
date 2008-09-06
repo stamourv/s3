@@ -94,7 +94,7 @@
 
 ;; comparison with packet data TODO put with other functions ?
 (define (=conn-info-pkt? pkt-idx c c-idx n)
-  (=subfield-pkt-n? pkt-idx (vector-ref c 0) c-idx n))
+  (u8vector-equal-field? pkt pkt-idx (vector-ref c 0) c-idx n))
 
 
 ;; creates a new connection with the info in the incoming packet
@@ -169,10 +169,9 @@
 ;; TODO we're still doomed if offset if more than 24 bits
 ;; add offset to the field of n bytes that begins at idx
 ;; TODO is this used often enough to be worth it ?
-;; TODO increment which part ? say in the name
-(define (increment-curr-conn-n idx offset n) ;; TODO weird argument order, and should have a !, since it is destructive
-  (u8vector-increment-n! (vector-ref curr-conn 0) idx n offset))
-;; TODO see if the custom setter (the one that sets the informations inside the connection) is still used, since we kind of circumvent it here (to avoid having to send a setter instead of a vector, which is ugly)
+;; TODO not really an increment
+(define (increment-curr-conn-info! idx n offset)
+  (u8vector-increment! (vector-ref curr-conn 0) idx n offset))
 
 ;; Links the current connection with the corresponding application
 ;; sends the connection to the application, which can then access it at

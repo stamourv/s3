@@ -15,8 +15,17 @@
 (define tcp-ports '())
 (define udp-ports '())
 
-(define tcp-isn (cyclic-4-bytes))
+(define (ip-identification)
+  (let ((res ip-identification-count))
+    (set! ip-identification-count (modulo (+ 1 res) 256))
+    res))
+(define ip-identification-count 0)
+;; TODO should be more than just a cyclic counter, should increment every 8ms or so, see the book (or maybe is it for tcp ?)
 
+(define (tcp-isn)
+  (u8vector-increment! tcp-isn-count 0 4 1)
+  tcp-isn-count)
+(define tcp-isn-count (u8vector 255 255 255 255))
 
 ;;---------- input and output control flow ------------------------------------
 
@@ -32,7 +41,7 @@
 
 
 ;;SEND PACKET
-(define test-pkt (make-u8vector 0 0))
+;(define test-pkt (make-u8vector 0 0))
 (define (send-frame len) ; TODO instead of taking a parameter, maybe have use the pkt-len variable ? then we can call it from process-packet
   ;; (set! test-pkt (make-u8vector len 0))
   ;;          (calculate-eth-crc (+ 4 len)) ; TODO watch out for off by one

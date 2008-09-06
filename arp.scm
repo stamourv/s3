@@ -7,14 +7,14 @@
 
 ;; called when an ARP request is received
 (define (arp-pkt-in)
-  (if (and (=pkt-u8-2? arp-htype arp-eth-type)  ; Ethernet type
- 	   (=pkt-u8-2? arp-ptype eth-type-IPv4) ; IP protocol type
- 	   (=pkt-byte? arp-halen 6)             ; Ethernet adr length
- 	   (=pkt-byte? arp-palen 4)             ; IP adr length
+  (if (and (u8vector-equal-field? pkt arp-htype arp-eth-type 0 2)  ; Ethernet type
+ 	   (u8vector-equal-field? pkt arp-ptype eth-type-IPv4 0 2) ; IP protocol type
+ 	   (= (u8vector-ref pkt arp-halen) 6)                      ; Ethernet adr length
+ 	   (= (u8vector-ref pkt arp-palen) 4)                      ; IP adr length
  	   ;; TODO we really need all these checks ? be liberal in what you accept ?
- 	   (=pkt-u8-2? arp-oper arp-oper-req)   ; ARP request
-; 	   (or (=pkt-u8-4? arp-tip my-IP)       ; check if we are the target
-;	   (=pkt-u8-4? arp-tip broadcast-IP)) ;; TODO bug, even with a broadcast, this doesn't pass
+ 	   (u8vector-equal-field? pkt arp-oper arp-oper-req 0 2)   ; ARP request
+; 	   (or (u8vector-equal-field? pkt arp-tip my-IP 0 4)       ; check if we are the target
+;	   (u8vector-equal-field? pkt arp-tip broadcast-IP 0 4)) ;; TODO bug, even with a broadcast, this doesn't pass
 	   ) ;; TODO should we tolerate broadcast ? goes a bit against the spirit of ARP
       (begin
 	(debug "arp\n")
@@ -23,4 +23,5 @@
 	(u8vector-copy! pkt arp-sip pkt arp-tip 4) ;; TODO maybe a function to swap source IP and MAC with the target, etc, and put our own info when we answer ?
  	(u8vector-copy! my-MAC 0 pkt arp-shadr 6)
 	(u8vector-copy! my-IP 0 pkt arp-sip 4)
-	(ethernet-encapsulation arp-length))))
+	(ethernet-encapsulation arp-length))
+      #f))

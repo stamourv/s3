@@ -1,16 +1,14 @@
 kill list for copying
-copy-pkt->subfield
-copy-subfield->pkt ;; TODO escpescially since argument order changed, we have to get rid
-copy-u8->pkt ?
-copy-pkt->curr-conn
-pkt-byte, all vector equality functions
+
+to count lines : grep "^[^;]" *.scm | wc -l
 
 down to 5703 bytes (from what ? something put it higher, no idea what)
-now 5652, 5641, 5626, 5602, 5570, 5442, 5424, 5413, 5414, 5401, 5395, 5370, 5354, 5337
+now 5652, 5641, 5626, 5602, 5570, 5442, 5424, 5413, 5414, 5401, 5395, 5370, 5354, 5337, 5323, 5307, 5294, 5281, 5275
 
 figure out dependencies for each module
 
 get rid of the -n suffixes
+get rid of weird capitalisation for MAC, IP, etc
 
 standardize names, for instance, ue only make or create, not a mix of the 2
 
@@ -18,16 +16,18 @@ make sure constants (as in (define x 3)) are really inlined and don't cost more 
 
 have an a-list for mac-ip associations, kind of arp cache, but maybe without arp, when we send a packet, the address either has to be in the list, or must have sent a message before (we might have a leak if we keep all addresses)
 
-utiliser case, surtout pour dispatch de higher protocols
+utiliser case, surtout pour dispatch de higher protocols NON prend plus de place (p-e que cout de memq s'amortit, reste a voir), aurait besoin de equal? case pour ethernet, donc probablement trop de trouble
 
 have vector field equality directly in the vm
 
 test everything to make sure it works
 
-put this version into git
-
 when we bind a port, say for which address, or leave for everyone by default ?
 
 all mentions of options were removed, go see orig to see what there was
+
+getting rid of (define (=pkt-u8? i u8 n) (u8vector-equal-field? pkt i u8 0 n)) cost us 13 bytes, but saves in time, let's see what we decide later
+
+how to make sure that stack task really sends pendng output ?
 
 CHANGE BUFFERS TO HAVE 2 POINTERS

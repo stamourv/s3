@@ -2,7 +2,6 @@
 ;;;; filename: pkt.scm
 
 ;;;  - packet format
-;;;  - some standard constants associated to the different protocols
 ;;;  - operations on the packet
 
 ;; note : there is always only one packet in the system
@@ -106,18 +105,3 @@
       (begin (u8vector-set! pkt (- (+ idx n) 1) (modulo val 256))
 	     (integer->pkt (quotient n 256) idx (- n 1)))))
 ;; TODO better name, that mentions integer, and a !
-
-
-;; compares a subfield to a packet subfield
-(define (=pkt-byte? i x) (= (u8vector-ref pkt i) x))
-(define (=subfield-pkt-n? pkt-i object start n)
-  (u8vector-equal-field? pkt pkt-i object start n))
-
-;; idem, but the subfield is a u8vector subfield and begins at the first element
-;; TODO do we really need both ?
-;; TODO get rid of these, superfluous function calls
-(define (=pkt-u8-n? i u8 n) (=subfield-pkt-n? i u8 0 n))
-(define (=pkt-u8-6? i u8) (=pkt-u8-n? i u8 6))
-(define (=pkt-u8-4? i u8) (=pkt-u8-n? i u8 4))
-(define (=pkt-u8-2? i u8) (=pkt-u8-n? i u8 2))
-;; TODO pass the true vectors around instead of functions ?

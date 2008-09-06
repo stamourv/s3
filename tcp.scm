@@ -310,7 +310,7 @@
   (conn-info-set! curr-conn tcp-attempts-count 0)
   (if special-flag-to-ack? (self-acknowledgement))
   (if special-flag-to-send? (conn-info-set! curr-conn tcp-self-ack-units 1))
-  (if peer-ack? (increment-curr-conn-n tcp-peer-seqnum 1 4))
+  (if peer-ack? (increment-curr-conn-info! tcp-peer-seqnum 4 1))
   (set-curr-timestamp!))
 
 
@@ -321,7 +321,7 @@
 
 	 (simple-receiver (+ (get-ip-hdr-len) (get-tcp-hdr-len)))))
     (if in-amount
-        (begin (increment-curr-conn-n tcp-peer-seqnum in-amount 4)
+        (begin (increment-curr-conn-info! tcp-peer-seqnum 4 in-amount)
                in-amount)
         #f)))
 
@@ -363,7 +363,7 @@
 				  tcp-data
 				  out-amount)
 	  ;; TODO last line was in simple-transmitter, but since it was only used once, it ended up inlined, the clearing part was removed since it was always passed #f (actually the old udp did pass #t, but it's gone anyways)
-          (increment-curr-conn-n tcp-attempts-count 1 1)
+          (increment-curr-conn-info! tcp-attempts-count 1 1)
           (conn-info-set! curr-conn tcp-self-ack-units out-amount)))
     out-amount))
 ;; TODO when do we get rid of output data if we received the ack ?
@@ -390,7 +390,7 @@
 	(turn-tcp-flag-on PSH))
     (if (> (u8vector-ref pkt tcp-flags) 0)
         (begin
-          (if (> flags 0) (increment-curr-conn-n tcp-attempts-count 1 1))
+          (if (> flags 0) (increment-curr-conn-info! tcp-attempts-count 1 1))
           (set-curr-timestamp!)
           (tcp-encapsulation out-amount)))))
 
@@ -408,10 +408,9 @@
   (let ((new-acknum (u8vector-ref-field (vector-ref curr-conn 0)
 					tcp-self-seqnum
 					4)))
-    (u8vector-increment-n! new-acknum 0 4 (conn-info-ref curr-conn tcp-self-ack-units))
+    (u8vector-increment! new-acknum 0 4 (conn-info-ref curr-conn tcp-self-ack-units))
     ;; TODO find out what these self-ack-units are
-    (=pkt-u8-4? tcp-acknum new-acknum)))
-
+    (u8vector-equal-field? pkt tcp-acknum new-acknum 0 4)))
 
 (define (turn-tcp-flag-on flag)
   (u8vector-set! pkt tcp-flags (bitwise-ior flag (u8vector-ref pkt tcp-flags))))
@@ -442,7 +441,7 @@
 
 (define (self-acknowledgement) ;; TODO what's that ? would is be related to selective acknowledgement ?
   (let ((ack-units (conn-info-ref curr-conn tcp-self-ack-units)))
-    (increment-curr-conn-n tcp-self-seqnum ack-units 4)
+    (increment-curr-conn-info! tcp-self-seqnum 4 ack-units)
     (conn-info-set! curr-conn tcp-self-ack-units 0)
     (conn-info-set! curr-conn tcp-attempts-count 0)
     ack-units))

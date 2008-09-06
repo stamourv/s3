@@ -75,7 +75,7 @@
 (define (pass-app-filter? src-portnum-idx port)
   (let ((dst-IP-ref (u8vector-ref-field pkt ip-dst-IP 4)) ; length 4 u8vector
         (src-IP-ref (u8vector-ref-field pkt ip-src-IP 4)) ; length 4 u8vector
-        (src-portnum-ref (pkt-ref-2 src-portnum-idx))) ; integer
+        (src-portnum-ref (pkt-ref-2 src-portnum-idx)))    ; integer
     ((conf-ref port conf-filter) dst-IP-ref src-IP-ref src-portnum-ref)))
 
 

@@ -3,13 +3,11 @@
 
 ;; TODO maybe rethink the interface with the outside, and reuse some of the functions of the old udp for i/o, they can be found in ../orig
 
-
 ;; called when an UDP datagram is received
 (define (udp-pkt-in)
-  (if (valid-udp-checksum?)
-      (let ((port (search-port
-		   (pkt-ref-2 udp-dst-portnum)
-		   udp-ports)))
+  (if (or (= (pkt-ref-2 udp-checksum) 0) ; valid or no checksum ?
+	  (valid-checksum? (compute-udp-checksum)))
+      (let ((port (search-port (pkt-ref-2 udp-dst-portnum) udp-ports)))
 	(if (and port (pass-app-filter? udp-src-portnum port))
 	    ((conf-ref port conf-reception)
 	     (u8vector-ref-field pkt ip-src-IP 4)
@@ -17,9 +15,6 @@
 	     (u8vector-ref-field pkt udp-data (- (pkt-ref-2 udp-length) 8)))
 	    (icmp-send-port-unreachable-error))))) ; no app listens to this port
 
-(define (valid-udp-checksum?)
-  (or (= (pkt-ref-2 udp-checksum) 0)
-      (valid-checksum? (compute-udp-checksum))))
 (define (compute-udp-checksum)
   (let ((start udp-header))
     ;; we start at the beginning of the udp header
@@ -32,24 +27,22 @@
                                       (pkt-checksum ip-src-IP
                                                     (+ 8 ip-src-IP)
                                                     0))))
+;; TODO see if we can get rid of this pseudo thing
 
 
 ;; UDP outgoing packet treatment
-;; send an UDP datagram, takes an IP adress (u8vector of length 4), a port
-;; number (u8vector of length 2) and data (u8vector)
+;; send an UDP datagram, takes an IP adress (u8vector of length 4), the source
+;; port number (integer), destination port number (integer) and data (u8vector)
+;; if no data should be sent, an empty vector should be give TODO when would we want no data ?
 ;; TODO is it clean to take the src-port as parameter ?
 ;; TODO was not tested at all
 ;; TODO won't work, we don't know the hardware address if this was not sent in response to something else, would have to send an ARP request, or keep a cache of who sent data, linking ip addresses with mac (if we do only that, we can't initiate anything) DANGER
 (define (udp-encapsulation dst-IP src-portnum dst-portnum data)
-  (let* ((data-len (if data (u8vector-length data) 0)) ;; TODO would there be a case where we don't send any data ?
+  (let* ((data-len (u8vector-length data))
 	 (len (+ 8 data-len)))
-    ;; TODO have a function to pass from portnum number to vector ? and visa-versa
-    (if data (u8vector-copy! data 0 pkt udp-data data-len))
+    (u8vector-copy! data 0 pkt udp-data data-len)
     (u8vector-copy! (portnum->u8vector dst-portnum) 0 pkt udp-dst-portnum 2)
     (u8vector-copy! (portnum->u8vector src-portnum) 0 pkt udp-src-portnum 2)
     (integer->pkt 0 udp-checksum 2)
     (integer->pkt len udp-length 2)
-    (ip-encapsulation dst-IP
-		      udp-checksum
-                      compute-udp-checksum
-                      len)))
+    (ip-encapsulation dst-IP udp-checksum compute-udp-checksum len)))
