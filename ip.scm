@@ -63,16 +63,16 @@
   (let ((ip-len (+ 20 len)))
     (u8vector-set! pkt ip-ttl ip-original-ttl)
     (set-ip-frag)
-    (integer->pkt-2 0 ip-checksum)
-    (copy-u8->pkt-4 ip-dst-IP dst-IP) ;; TODO should be a u8vector or a ref ?
-    (copy-u8->pkt-4 ip-src-IP my-IP)
-    (integer->pkt-2 (ip-identification) ip-ident)
-    (integer->pkt-2 ip-len ip-length)
+    (integer->pkt 0 ip-checksum 2)
+    (u8vector-copy! dst-IP 0 pkt ip-dst-IP 4)
+    (u8vector-copy! my-IP 0 pkt ip-src-IP 4)
+    (integer->pkt (ip-identification) ip-ident 2)
+    (integer->pkt ip-len ip-length 2)
     (u8vector-set! pkt ip-service 0)
     ;; set the version to IPv4 and the header size to 20 bytes (no options)
     (u8vector-set! pkt ip-version (+ (* 4 16) 5)) ;; TODO fixed header length, what about options ?
-    (integer->pkt-2 (reverse-checksum (compute-checksum)) chk-idx)
+    (integer->pkt (reverse-checksum (compute-checksum)) chk-idx 2)
     ;; TODO good order for checksums ?
-    (integer->pkt-2 (reverse-checksum (compute-ip-checksum)) ip-checksum)
+    (integer->pkt (reverse-checksum (compute-ip-checksum)) ip-checksum 2)
     (ethernet-encapsulation ip-len)))
 ;; TODO this should be connection agnostic (take the target ip from the original message), and not need to know the checksum function for the upper protocol

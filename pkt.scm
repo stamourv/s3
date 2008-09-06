@@ -98,29 +98,15 @@
 (define (pkt-ref-2 i)
   (+ (* 256 (u8vector-ref pkt i)) (u8vector-ref pkt (+ i 1))))
 
-;; copies data from a subfield to the packet (n = subfield length)
-(define (copy-subfield->pkt-n src i-src i-pkt n)
-  (u8vector-copy! src i-src pkt i-pkt n))
-;; TODO is it really necessary to have a function for that ? NO, get rid, inline
-
-;; idem, but the subfield begins at the first element of a u8vector
-(define (copy-u8->pkt-n i u8 n) ;; TODO weird argument order
-  (copy-subfield->pkt-n u8 0 i n))
-(define (copy-u8->pkt-2 i u8) (copy-u8->pkt-n i u8 2))
-(define (copy-u8->pkt-4 i u8) (copy-u8->pkt-n i u8 4))
-(define (copy-u8->pkt-6 i u8) (copy-u8->pkt-n i u8 6))
-;; TODO call these a name with set! ? would be clearer
-
-;; copies data from pkt to a subfield
-(define (copy-pkt->subfield-n i-pkt dst i-dst n)
-  (u8vector-copy! pkt i-pkt dst i-dst n))
-
-
 ;; copies an integer into n contiguous bytes of the packet
 ;; warning : picobit has 24-bit integers, keep this in mind when n > 3
 ;; TODO get rid of integer->subfield ? maybe have only one of the 2 ?
-(define (integer->pkt-n val idx n) (integer->subfield val pkt idx n))
-(define (integer->pkt-2 val idx) (integer->subfield val pkt idx 2))
+(define (integer->pkt val idx n)
+  (if (> n 0)
+      (begin (u8vector-set! pkt (- (+ idx n) 1) (modulo val 256))
+	     (integer->pkt (quotient n 256) idx (- n 1)))))
+;; TODO better name, that mentions integer, and a !
+
 
 ;; compares a subfield to a packet subfield
 (define (=pkt-byte? i x) (= (u8vector-ref pkt i) x))
@@ -135,12 +121,3 @@
 (define (=pkt-u8-4? i u8) (=pkt-u8-n? i u8 4))
 (define (=pkt-u8-2? i u8) (=pkt-u8-n? i u8 2))
 ;; TODO pass the true vectors around instead of functions ?
-
-;; to move n consecutive bytes from "orig" in pkt to "dest"
-;; TODO doesn't work, should replace translate-in-pkt
-; (define (move-in-pkt-n src dst n)
-;   (let ((move-in-pkt (lambda (i val) (pkt-set! (+ i (- dst src)) val)))) ; TODO can we do without this subtraction ?
-;     (copy-pkt->subfield-n src move-in-pkt src n)))
-(define (move-in-pkt-n src dst n)
-  (copy-pkt->subfield-n src pkt dst n)) ;; TODO ugly, get rid
-;; TODO this might be the reason we start at he end in vector-something, if not, make sure we don't clobber anything

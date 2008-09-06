@@ -26,9 +26,9 @@
 ;; output
 ;; TODO maybe have a more general version that takes he destination as parameter ?
 (define (ethernet-encapsulation len) ; TODO useful only with a connection
-  (move-in-pkt-n eth-src-MAC eth-dst-MAC 6)
+  (u8vector-copy! pkt eth-src-MAC pkt eth-dst-MAC 6)
   ;; (copy-curr-conn-info->pkt eth-dst-MAC conn-peer-MAC 6) ; TODO kept since some of the test cases seems to behave strangely if we simply reply to the sender
-  (copy-u8->pkt-6 eth-src-MAC my-MAC)
+  (u8vector-copy! my-MAC 0 pkt eth-src-MAC 6)
   ;; we don't need to set the ethernet frame type, since it's the same as on
   ;; the original packet
   (send-frame (+ 14 len)))

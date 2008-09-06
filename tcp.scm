@@ -384,7 +384,7 @@
   (u8vector-set! pkt tcp-flags flags)
   (if (and receiver-on? (tcp-receiver)) (turn-tcp-flag-on ACK))
   (set! tcp-opt-len (if options (u8vector-length options) 0))
-  (copy-u8->pkt-n tcp-options options tcp-opt-len) ; set options
+  (u8vector-copy! options 0 pkt tcp-options tcp-opt-len) ; set options
   (let ((out-amount (if transmitter-on? (tcp-transmitter) 0)))
     (if (> (if out-amount out-amount 0) 0) ;; TODO ugly, but tcp-transmitter can give #f
 	(turn-tcp-flag-on PSH))
@@ -451,14 +451,14 @@
 ;; output
 (define (tcp-encapsulation amount)
   (let ((len (+ 20 tcp-opt-len (if amount amount 0))))
-    (integer->pkt-2 0 tcp-urgentptr)
-    (integer->pkt-2 0 tcp-checksum)
-    (integer->pkt-2 (buf-free-space (get-input curr-conn)) tcp-window)
+    (integer->pkt 0 tcp-urgentptr 2)
+    (integer->pkt 0 tcp-checksum 2)
+    (integer->pkt (buf-free-space (get-input curr-conn)) tcp-window 2)
     (set-tcp-hdr-len)
     (copy-curr-conn-info->pkt tcp-acknum tcp-peer-seqnum 4)
     (copy-curr-conn-info->pkt tcp-seqnum tcp-self-seqnum 4)
     (copy-curr-conn-info->pkt tcp-dst-portnum conn-peer-portnum 2)
-    (integer->pkt-2 (conf-ref curr-port conf-portnum) tcp-src-portnum)
+    (integer->pkt (conf-ref curr-port conf-portnum) tcp-src-portnum 2)
     (ip-encapsulation
      (u8vector-ref-field (vector-ref curr-conn 0) conn-peer-IP 4)
      tcp-checksum ;; TODO this has to be calculated with the correct ip header, but passing it is quite ugly

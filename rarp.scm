@@ -18,12 +18,12 @@
       ;; no need to check if we are the target or not, RARP requests are
       ;; broadcast
       (begin
-	(copy-u8->pkt-2 arp-oper rarp-oper-resp) ; RARP response
+	(u8vector-copy! rarp-oper-resp 0 pkt arp-oper 2) ; RARP response
 	;; TODO abstract the following with ARP ?
-	(copy-subfield->pkt-n pkt arp-thadr arp-shadr 6) ;; TODO make sure this is ok
-	(copy-subfield->pkt-n (rarp-get-ip) 0 arp-tip 4) ; copy the found ip
-	(copy-u8->pkt-6 arp-shadr my-MAC)
-	(copy-u8->pkt-4 arp-sip my-IP) ;; TODO abstract similarities between arp and rarp
+	(u8vector-copy! pkt arp-thadr pkt arp-shadr 6) ;; TODO make sure this is ok
+	(u8vector-copy! (rarp-get-ip) 0 pkt arp-tip 4)
+	(u8vector-copy! my-MAC 0 pkt arp-shadr 6)
+	(u8vector-copy! my-IP 0 pkt arp-sip 4) ;; TODO abstract similarities between arp and rarp
 	(ethernet-encapsulation arp-length)))) ; TODO error case
 
 (define (rarp-get-ip) (cdr (assoc (u8vector-ref-field pkt arp-shadr 6) rarp-mac-ip-alist)))

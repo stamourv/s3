@@ -44,11 +44,11 @@
   (let* ((data-len (if data (u8vector-length data) 0)) ;; TODO would there be a case where we don't send any data ?
 	 (len (+ 8 data-len)))
     ;; TODO have a function to pass from portnum number to vector ? and visa-versa
-    (if data (copy-u8->pkt-n udp-data data data-len))
-    (copy-u8->pkt-2 udp-dst-portnum (portnum->u8vector dst-portnum))
-    (copy-u8->pkt-2 udp-src-portnum (portnum->u8vector src-portnum))
-    (integer->pkt-2 0 udp-checksum)
-    (integer->pkt-2 len udp-length)
+    (if data (u8vector-copy! data 0 pkt udp-data data-len))
+    (u8vector-copy! (portnum->u8vector dst-portnum) 0 pkt udp-dst-portnum 2)
+    (u8vector-copy! (portnum->u8vector src-portnum) 0 pkt udp-src-portnum 2)
+    (integer->pkt 0 udp-checksum 2)
+    (integer->pkt len udp-length 2)
     (ip-encapsulation dst-IP
 		      udp-checksum
                       compute-udp-checksum

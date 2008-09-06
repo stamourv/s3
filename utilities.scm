@@ -29,17 +29,6 @@
 
 ;; DATA MANIPULATION
 
-;; stores an integer into a subfield ("n: length of the subfield")
-(define (integer->subfield val dst start n)
-  (integer->subfield-loop val dst start (- n 1)))
-(define (integer->subfield-loop val dst start idx)
-  (if (>= idx 0)
-      (begin (u8vector-set! dst (+ start idx) (modulo val 256))
-             (integer->subfield-loop (quotient val 256)
-                                     dst
-                                     start
-                                     (- idx 1)))))
-
 ; TODO implement directly in picobit, meanwhile, make sure it's ok
 (define (u8vector-equal-field? v1 s1 v2 s2 n)
   (cond ((= n 0) #t)

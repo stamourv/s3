@@ -113,7 +113,7 @@
     (copy-pkt->curr-conn-info ip-src-IP conn-peer-IP 4) ;; TODO why these 2 ? we can probably just swap when we create the response, no ?
     (copy-pkt->curr-conn-info eth-src-MAC conn-peer-MAC 6) ;; TODO do we need this ? we can simply answer to the sender
     (set-timestamp! c)
-    (copy-u8->pkt-4 tcp-self-seqnum (tcp-isn))
+    (u8vector-copy! (tcp-isn) 0 pkt tcp-self-seqnum 4)
     (copy-pkt->curr-conn-info tcp-seqnum tcp-peer-seqnum 4)
     (get-peer-mss tcp-options)
     (set! curr-conn c)))
@@ -161,9 +161,9 @@
 
 ;; TODO move with other info functions
 (define (copy-pkt->curr-conn-info pkt-idx conn-idx n) ;; TODO standardise name
-  (copy-pkt->subfield-n pkt-idx (vector-ref curr-conn 0) conn-idx n))
+  (u8vector-copy! pkt pkt-idx (vector-ref curr-conn 0) conn-idx n))
 (define (copy-curr-conn-info->pkt pkt-idx conn-idx n) ;; TODO standardise name
-  (copy-subfield->pkt-n (vector-ref curr-conn 0) conn-idx pkt-idx n))
+  (u8vector-copy! (vector-ref curr-conn 0) conn-idx pkt pkt-idx n))
 
 
 ;; TODO we're still doomed if offset if more than 24 bits

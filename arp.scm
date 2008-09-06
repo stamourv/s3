@@ -18,9 +18,9 @@
 	   ) ;; TODO should we tolerate broadcast ? goes a bit against the spirit of ARP
       (begin
 	(debug "arp\n")
-	(copy-u8->pkt-2 arp-oper arp-oper-resp) ; ARP response
+	(u8vector-copy! arp-oper-resp 0 pkt arp-oper 2) ; ARP response
 	(u8vector-copy! pkt arp-shadr pkt arp-thadr 6)
 	(u8vector-copy! pkt arp-sip pkt arp-tip 4) ;; TODO maybe a function to swap source IP and MAC with the target, etc, and put our own info when we answer ?
- 	(copy-u8->pkt-6 arp-shadr my-MAC)
-	(copy-u8->pkt-4 arp-sip my-IP)
+ 	(u8vector-copy! my-MAC 0 pkt arp-shadr 6)
+	(u8vector-copy! my-IP 0 pkt arp-sip 4)
 	(ethernet-encapsulation arp-length))))

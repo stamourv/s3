@@ -38,7 +38,7 @@
 ;; ICMP SUPPORTED OPERATIONS
 
 (define (icmp-send-address-mask-reply)
-  (copy-u8->pkt-4 icmp-data my-address-mask)
+  (u8vector-copy! my-address-mask 0 pkt icmp-data 4)
   (icmp-encapsulation icmp-address-mask-reply 4))
 
 (define (icmp-send-echo-reply)
@@ -63,30 +63,30 @@
 ;; since it has the same structure
 (define (icmp-unreachable type)
   ;; copy IP headers first 20 bytes, and first 8 bytes of data
-  (move-in-pkt-n udp-header (+ icmp-data 20) 8)
+  (u8vector-copy! pkt udp-header pkt (+ icmp-data 20) 8)
   (copy-ip-hdr)
-  (integer->pkt-n 0 38 4) ; set the 4 optional bytes to 0 ;; TODO was icmp-options
+  (integer->pkt 0 icmp-options 4) ; set the 4 optional bytes to 0
   (icmp-encapsulation type (+ 20 8)))
 
 ;; we don't copy the options, just the 20 first bytes
-(define (copy-ip-hdr) (move-in-pkt-n ip-header icmp-data 20))
+(define (copy-ip-hdr) (u8vector-copy! pkt ip-header pkt icmp-data 20)) ;; TODO can this replace something else in here ?
 
 
 ;; TODO clean this up, should end up calling ip-encapsulation, which sould in turn call eth-encapsulation
 ;; data-amount is excluding icmp header
 (define (icmp-encapsulation key data-amount)
-  (copy-u8->pkt-2 icmp-type key)
-  (integer->pkt-2 0 icmp-checksum)
-  (integer->pkt-2 (reverse-checksum (compute-icmp-checksum)) ; TODO do we always have to reverse when we send ? if so, why not make it the deafult ? then we could make validchecksum check if it's 0, no ?
+  (u8vector-copy! key 0 pkt icmp-type 2)
+  (integer->pkt 0 icmp-checksum 2)
+  (integer->pkt (reverse-checksum (compute-icmp-checksum) 2) ; TODO do we always have to reverse when we send ? if so, why not make it the deafult ? then we could make validchecksum check if it's 0, no ?
 		  icmp-checksum) ; TODO is ICMP checksum correctly calculated ? we use the old IP info, maybe we should use the new ? it uses the old IP-length to calculate the end of the message, I doubt this is correct
-  (copy-subfield->pkt-n pkt ip-src-IP ip-dst-IP 4) ;; TODO abstract that
-  (copy-u8->pkt-4 ip-src-IP my-IP)
-  (integer->pkt-2 0 ip-checksum)
+  (u8vector-copy! pkt ip-src-IP pkt ip-dst-IP 4) ;; TODO abstract that
+  (u8vector-copy! my-IP 0 pkt ip-src-IP 4)
+  (integer->pkt 0 ip-checksum 2)
   (u8vector-set! pkt ip-protocol ip-protocol-ICMP) ;; TODO unlike other protocols, this change is necessary, since ICMP packets can be sent in response to other protocols
   (u8vector-set! pkt ip-ttl 255) ;; TODO should be done in IP
   (u8vector-set! pkt ip-service 0) ; TODO fields are not set in order, reason ?
   (set-ip-frag) ;; TODO use ip encapsulation ? then we can inline this function
-  (integer->pkt-2 (ip-identification) ip-ident) ;; TODO shouldn't this part be done at the ip level ? then we could have ip-identification in ip and used only once ?
-  (integer->pkt-2 (+ (get-ip-hdr-len) data-amount icmp-hdr-len) ip-length)
-  (integer->pkt-2 (reverse-checksum (compute-ip-checksum)) ip-checksum)
+  (integer->pkt (ip-identification) ip-ident 2) ;; TODO shouldn't this part be done at the ip level ? then we could have ip-identification in ip and used only once ? TODO is it 2 ? I think so, but make sure
+  (integer->pkt (+ (get-ip-hdr-len) data-amount icmp-hdr-len) ip-length 2)
+  (integer->pkt (reverse-checksum (compute-ip-checksum)) ip-checksum 2)
   (ethernet-encapsulation (pkt-ref-2 ip-length)))
