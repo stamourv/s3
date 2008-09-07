@@ -1,5 +1,5 @@
 ;;;; Lysiane Bouchard - Vincent St-Amour
-;;;; filename: pkt.scm
+;;;; pkt.scm
 
 ;;;  - packet format
 ;;;  - operations on the packet
@@ -9,80 +9,81 @@
 ;; TODO should we keep the current packet's length somewhere ?
 
 ;; TODO options are not supported as of now
-(define tcp-opt-len 0) ;; TODO are TCP options supported ?
-(define data-len 0)
+(define tcp-options-length 0) ;; TODO are TCP options supported ?
+(define data-length 0) ;; TODO any way to pass around instead ?
 
 
 ;; packet offsets
 
 ;; TODO is there a better way ? what about a slip back-end ?
-;; Ethernet header
-(define eth-header 0)
-(define eth-dst-MAC 0)
-(define eth-src-MAC 6)
-(define eth-type    12)
-(define eth-data    14)
+;; Ethernet
+(define ethernet-header          0)
+(define ethernet-destination-mac 0)
+(define ethernet-source-mac      6)
+(define ethernet-frame-type      12)
+(define ethernet-data            14)
 
-;; ARP header
-(define arp-header 14)
-(define arp-htype  14)
-(define arp-ptype  16)
-(define arp-halen  18)
-(define arp-palen  19)
-(define arp-oper   20)
-(define arp-shadr  22)
-(define arp-sip    28)
-(define arp-thadr  32)
-(define arp-tip    28)
-(define arp-end    42)
+;; ARP / RARP
+(define arp-header                  14)
+(define arp-hardware-type           14)
+(define arp-protocol-type           16)
+(define arp-hardware-address-length 18)
+(define arp-protocol-address-length 19)
+(define arp-operation               20)
+(define arp-source-hardware-address 22) ;; TODO remove address from the name ?
+(define arp-source-ip               28)
+(define arp-target-hardware-address 32)
+(define arp-target-ip               28)
 (define arp-length 28)
 
-;; IP header
-(define ip-header   14)
-(define ip-version  14)
-(define ip-hdr-len  14)
-(define ip-service  15)
-(define ip-length   16)
-(define ip-ident    18)
-(define ip-frag     20)
-(define ip-ttl      22)
-(define ip-protocol 23) ;; TODO pretty ambiguous name
-(define ip-checksum 24)
-(define ip-src-IP   26)
-(define ip-dst-IP   30)
-(define ip-options  34) ;; TODO not supported as of now
+;; IP
+(define ip-header                    14)
+(define ip-version-and-header-length 14)
+(define ip-service                   15)
+(define ip-length                    16)
+(define ip-identification            18)
+(define ip-fragment-offset           20)
+(define ip-time-to-live              22)
+(define ip-protocol                  23) ;; TODO pretty ambiguous name
+(define ip-checksum                  24)
+(define ip-source-ip                 26)
+(define ip-destination-ip            30)
+(define ip-options                   34) ;; TODO not supported as of now
+(define ip-header-length 20)
 
 ;; TODO everything after ip would have to be functions (because of options that change), instead, let's try to have functions like ip-data-ref, tcp-data-ref, etc that add the offset for us. that is, when weadd options
 
-;; ICMP message
-(define icmp-header 34)
-(define icmp-type 34)
-(define icmp-code 35)
+;; ICMP
+(define icmp-header   34)
+(define icmp-type     34)
+(define icmp-code     35)
 (define icmp-checksum 36)
-(define icmp-options 38)
-(define icmp-data 42) ; TODO this used to be 4, but now we consider the header to be 8 bytes, with 4 of options, that can be used differently according to each operation
+(define icmp-options  38)
+(define icmp-data     42)
+(define icmp-header-length 8) ;; TODO do the same for other protocols ?
 
-;; TCP header
-(define tcp-header       34)
-(define tcp-src-portnum  34)
-(define tcp-dst-portnum  36)
-(define tcp-seqnum       38)
-(define tcp-acknum       42)
-(define tcp-hdr-len      46)
-(define tcp-flags        47)
-(define tcp-window       48)
-(define tcp-checksum     50)
-(define tcp-urgentptr    52)
-(define tcp-options      54) ;; TODO do we support options ? looking at these offsets, looks like we don't
-(define tcp-data         54)
+;; TCP
+(define tcp-header              34)
+(define tcp-source-portnum      34)
+(define tcp-destination-portnum 36)
+(define tcp-seqnum              38) ; TODO change name ?
+(define tcp-acknum              42) ; TODO change name ?
+(define tcp-header-length       46)
+(define tcp-flags               47)
+(define tcp-window              48)
+(define tcp-checksum            50)
+(define tcp-urgent-data-pointer 52)
+(define tcp-options             54) ;; TODO do we support options ? looking at these offsets, looks like we don't
+(define tcp-data                54)
+;; TODO watch out if we want to store the length, not to have the same var name as above
 
-;; UDP header
-(define udp-header      34)
-(define udp-src-portnum 34)
-(define udp-dst-portnum 36)
-(define udp-length      38)
-(define udp-checksum    40)
-(define udp-data        42)
+;; UDP
+(define udp-header              34)
+(define udp-source-portnum      34)
+(define udp-destination-portnum 36)
+(define udp-length              38)
+(define udp-checksum            40)
+(define udp-data                42)
 
 
 ;; sets vect as the current packet

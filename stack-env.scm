@@ -15,7 +15,7 @@
 (define tcp-ports '())
 (define udp-ports '())
 
-(define (ip-identification)
+(define (get-ip-identification)
   (let ((res ip-identification-count))
     (set! ip-identification-count (modulo (+ 1 res) 256))
     res))
@@ -34,7 +34,7 @@
 ;; TODO we have a problem if we start the stack before we get any packets, since we process empty packets
 (define (process-packet)
   (debug "process-packet\n")
-  (set! data-len 0)
+  (set! data-lenght 0)
   (eth-pkt-in) ; the response is sent somewhere within
   (set! curr-port #f)
   (set! curr-conn #f))

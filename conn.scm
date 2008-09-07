@@ -36,10 +36,10 @@
 
 
 ;; informations
-(define conn-self-IP       0)
-(define conn-peer-IP       4) ;; TODO see if it's necessary or if a simple swap can do the job
+(define conn-self-ip       0)
+(define conn-peer-ip       4) ;; TODO see if it's necessary or if a simple swap can do the job
 (define conn-peer-portnum  8) ;; TODO same here
-(define conn-peer-MAC      10) ;; TODO same here
+(define conn-peer-mac      10) ;; TODO same here
 (define conn-state         16) ;; TODO useful ? if not, remove and shift all the others
 (define tcp-self-seqnum    17) ;; TODO were calculated, but these were the only infos after state anyway
 (define tcp-self-ack-units 21) ;; TODO what's that ?
@@ -108,10 +108,10 @@
                    tcp-syn-recv
 		   (vector #f #f #f))))
     (add-conn-to-curr-port c)
-    (copy-pkt->curr-conn-info ip-dst-IP conn-self-IP 4) ;; TODO useful ?
-    (copy-pkt->curr-conn-info tcp-src-portnum conn-peer-portnum 2)
-    (copy-pkt->curr-conn-info ip-src-IP conn-peer-IP 4) ;; TODO why these 2 ? we can probably just swap when we create the response, no ?
-    (copy-pkt->curr-conn-info eth-src-MAC conn-peer-MAC 6) ;; TODO do we need this ? we can simply answer to the sender
+    (copy-pkt->curr-conn-info ip-destination-ip conn-self-ip 4) ;; TODO useful ?
+    (copy-pkt->curr-conn-info tcp-source-portnum conn-peer-portnum 2)
+    (copy-pkt->curr-conn-info ip-source-ip conn-peer-ip 4) ;; TODO why these 2 ? we can probably just swap when we create the response, no ?
+    (copy-pkt->curr-conn-info ethernet-source-mac conn-peer-mac 6) ;; TODO do we need this ? we can simply answer to the sender
     (set-timestamp! c)
     (u8vector-copy! (tcp-isn) 0 pkt tcp-self-seqnum 4)
     (copy-pkt->curr-conn-info tcp-seqnum tcp-peer-seqnum 4)
@@ -147,12 +147,8 @@
 (define (buf-free-space buf) (- (buf-size buf) (vector-ref buf 0)))
 ;; TODO this might be used for redundant checks, if so, fix
 
-
-;; clears the first n bytes of data in the buffer
-;; or the whole buffer if there is less than n bytes
-;; of data inside
-;; TODO change name, it's actually more of a data consumption rather than a clear, we don't erase anything
-(define (buf-clear-n buf n)
+;; consumes n bytes of data from the buffer, so it can be overwritten
+(define (buf-consume buf n) ;; TODO name ? and used only once, maybe will be more in the future
   (if (>= n (vector-ref buf 0))
       (begin (vector-set! buf 0 0) ; set amount and pointer to 0
              (vector-set! buf 1 0))

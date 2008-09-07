@@ -1,17 +1,14 @@
 ;;;; Lysiane Bouchard - Vincent St-Amour
-;;;; filename: "utilities.scm"
+;;;; utilities.scm
 
 ;;;  general purpose procedures
 
-(define (false) #f) ;; TODO necessary ? used in 2 places, including with reception lower-p and these kinds of functions that might be cut
-
 ;; generic search function, that returns the first element of a list that
 ;; obeys a predicate
-;; TODO turn into filter, and return all ? or do we always need only 1 ?
-(define (search pred l)
+(define (memp pred l) ;; TODO name ? was search
   (cond ((null? l) #f)
         ((pred (car l)) (car l))
-        (else (search pred (cdr l)))))
+        (else (memp pred (cdr l)))))
 
 
 ;; DATA MANIPULATION

@@ -13,8 +13,6 @@
 (define icmp-address-mask-reply '#u8(18 0))
 (define icmp-host-precedence-violation '#u8(3 14))
 
-(define icmp-hdr-len 8) ;; TODO do the same for other protocols ?
-
 
 ;; called when an icmp datagram is received
 (define (icmp-pkt-in) ;; TODO we do have a pattern for protocols, do some checks, then dispatch to an upper level function. the generic reception functions were a pita, maybe try a macro ?
@@ -29,9 +27,11 @@
 ;; TODO do we accept any other requests ?
 ;; TODO send error cases to applications, as special tokens when they do the next operation
 
+;; this checksum covers the whole icmp datagram (which ends at the end of the
+;; IP datagram)
 (define (compute-icmp-checksum)
   (pkt-checksum icmp-header
-                (+ ip-header (pkt-ref-2 ip-length)) ;; TODO known statically ? no options
+                (+ ip-header (pkt-ref-2 ip-length))
                 0))
 
 
@@ -43,12 +43,12 @@
 
 (define (icmp-send-echo-reply)
   (icmp-encapsulation icmp-echo-reply (- (pkt-ref-2 ip-length)
-                                         (get-ip-hdr-len)
-                                         icmp-hdr-len)))
+                                         (get-ip-header-length) ;; TODO can we copy options too if we received some ?
+                                         icmp-header-length)))
 ;; TODO if we have a pkt-len var, we wouldn't have to calculate the length like this, it would simply remain unchanged
 
 (define (icmp-send-ip-header-bad-error) ; TODO wasn't checked, and I can't see it in the rfc
-  (copy-ip-hdr)
+  (u8vector-copy! pkt ip-header pkt icmp-data 20) ; copy IP header
   (icmp-encapsulation icmp-ip-header-bad 20))
 
 (define (icmp-send-protocol-unreachable-error)
@@ -64,12 +64,9 @@
 (define (icmp-unreachable type)
   ;; copy IP headers first 20 bytes, and first 8 bytes of data
   (u8vector-copy! pkt udp-header pkt (+ icmp-data 20) 8)
-  (copy-ip-hdr)
+  (u8vector-copy! pkt ip-header pkt icmp-data 20) ; copy IP header
   (integer->pkt 0 icmp-options 4) ; set the 4 optional bytes to 0
   (icmp-encapsulation type (+ 20 8)))
-
-;; we don't copy the options, just the 20 first bytes
-(define (copy-ip-hdr) (u8vector-copy! pkt ip-header pkt icmp-data 20)) ;; TODO can this replace something else in here ?
 
 
 ;; TODO clean this up, should end up calling ip-encapsulation, which sould in turn call eth-encapsulation
@@ -79,14 +76,14 @@
   (integer->pkt 0 icmp-checksum 2)
   (integer->pkt (reverse-checksum (compute-icmp-checksum) 2) ; TODO do we always have to reverse when we send ? if so, why not make it the deafult ? then we could make validchecksum check if it's 0, no ?
 		  icmp-checksum) ; TODO is ICMP checksum correctly calculated ? we use the old IP info, maybe we should use the new ? it uses the old IP-length to calculate the end of the message, I doubt this is correct
-  (u8vector-copy! pkt ip-src-IP pkt ip-dst-IP 4) ;; TODO abstract that
-  (u8vector-copy! my-IP 0 pkt ip-src-IP 4)
+  (u8vector-copy! pkt ip-source-ip pkt ip-destination-ip 4) ;; TODO abstract that
+  (u8vector-copy! my-ip 0 pkt ip-source-ip 4)
   (integer->pkt 0 ip-checksum 2)
   (u8vector-set! pkt ip-protocol ip-protocol-ICMP) ;; TODO unlike other protocols, this change is necessary, since ICMP packets can be sent in response to other protocols
-  (u8vector-set! pkt ip-ttl 255) ;; TODO should be done in IP
+  (u8vector-set! pkt ip-time-to-live 255) ;; TODO should be done in IP
   (u8vector-set! pkt ip-service 0) ; TODO fields are not set in order, reason ?
-  (set-ip-frag) ;; TODO use ip encapsulation ? then we can inline this function
-  (integer->pkt (ip-identification) ip-ident 2) ;; TODO shouldn't this part be done at the ip level ? then we could have ip-identification in ip and used only once ? TODO is it 2 ? I think so, but make sure
-  (integer->pkt (+ (get-ip-hdr-len) data-amount icmp-hdr-len) ip-length 2)
+  (set-ip-fragment-offset) ;; TODO use ip encapsulation ? then we can inline this function
+  (integer->pkt (get-ip-identification) ip-identification 2) ;; TODO shouldn't this part be done at the ip level ? then we could have get-ip-identification in ip and used only once ? TODO is it 2 ? I think so, but make sure
+  (integer->pkt (+ ip-header-length data-amount icmp-header-length) ip-length 2)
   (integer->pkt (reverse-checksum (compute-ip-checksum)) ip-checksum 2)
   (ethernet-encapsulation (pkt-ref-2 ip-length)))

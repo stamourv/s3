@@ -43,10 +43,7 @@
 ;;; server management
 
 (define (search-port portnum ports)
-  (search
-   (lambda (p)
-     (= portnum (conf-ref p conf-portnum)))
-   ports))
+  (memp (lambda (p) (= portnum (conf-ref p conf-portnum))) ports))
 
 ;; homologuous to BSD sockets', to be called from the application
 ;; takes the port number, the maximum simultaneous number of connections and
@@ -73,10 +70,10 @@
 
 ;; does the ip datagram pass the filter of the current port ?
 (define (pass-app-filter? src-portnum-idx port)
-  (let ((dst-IP-ref (u8vector-ref-field pkt ip-dst-IP 4)) ; length 4 u8vector
-        (src-IP-ref (u8vector-ref-field pkt ip-src-IP 4)) ; length 4 u8vector
+  (let ((dst-ip (u8vector-ref-field pkt ip-destination-ip 4)) ; length 4 u8vector
+        (src-ip (u8vector-ref-field pkt ip-source-ip 4)) ; length 4 u8vector
         (src-portnum-ref (pkt-ref-2 src-portnum-idx)))    ; integer
-    ((conf-ref port conf-filter) dst-IP-ref src-IP-ref src-portnum-ref)))
+    ((conf-ref port conf-filter) dst-ip src-ip src-portnum-ref)))
 
 
 ;;; simple conversion functions

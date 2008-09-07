@@ -1,5 +1,3 @@
-kill list for copying
-
 to count lines : grep "^[^;]" *.scm | wc -l
 
 down to 5703 bytes (from what ? something put it higher, no idea what)
@@ -7,10 +5,8 @@ now 5652, 5641, 5626, 5602, 5570, 5442, 5424, 5413, 5414, 5401, 5395, 5370, 5354
 
 figure out dependencies for each module
 
-get rid of the -n suffixes
 get rid of weird capitalisation for MAC, IP, etc
-
-standardize names, for instance, ue only make or create, not a mix of the 2
+standardize names, for instance, use only make or create (we only have make's now), not a mix of the 2
 
 make sure constants (as in (define x 3)) are really inlined and don't cost more that a simple 3 (simple example to prove it : use both one after the other and check size)
 
@@ -28,6 +24,14 @@ all mentions of options were removed, go see orig to see what there was
 
 getting rid of (define (=pkt-u8? i u8 n) (u8vector-equal-field? pkt i u8 0 n)) cost us 13 bytes, but saves in time, let's see what we decide later
 
-how to make sure that stack task really sends pendng output ?
+how to make sure that stack task really sends pendng output ? (implement stack-task)
+
+decide if we tolerate but ignore IP options, or choke on them altogether (also for TCP)
 
 CHANGE BUFFERS TO HAVE 2 POINTERS
+
+replace src dst pkt, etc
+
+
+kill list
+get-ip-header-len -- has to do with options, let's choke on then and have this constant at 20
