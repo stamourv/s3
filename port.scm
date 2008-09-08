@@ -11,8 +11,8 @@
 ;; the car is a port configuration stucture, described below
 ;; the cdr is a list containing all the active connections on this port
 (define (add-conn-to-curr-port conn)
-  (set-cdr! curr-port (cons conn (cdr curr-port))))
-(define (get-curr-conns) (cdr curr-port))
+  (set-cdr! curr-port (cons conn (cdr curr-port)))) ;; TODO inline ? would leak the specification, but still
+(define (get-curr-conns) (cdr curr-port)) 
 
 ;; conf structures are represented as vectors :
 ;; -0: port number (integer)

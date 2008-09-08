@@ -33,7 +33,12 @@
 ;;      a simple mutex (with Peterson's algorithm) that makes sure that the
 ;;      application does not access its data while the stack is modifying it
 ;; TODO add retries for the stack if the application holds a connection, or simply drop the packet ? can't happen in a single threaded application
-
+(define conn-info           0)
+(define conn-timestamp      1)
+(define conn-input          2)
+(define conn-output         3)
+(define conn-state-function 4) ;; TODO if we get rid of the state atom, rename this conn-state
+(define conn-lock           5)
 
 ;; informations
 (define conn-self-ip       0)
@@ -57,22 +62,18 @@
 
 
 ;; general operations
-(define (conn-info-ref conn i) (u8vector-ref (vector-ref conn 0) i))
-(define (conn-info-set! conn i val) (u8vector-set! (vector-ref conn 0) i val))
-(define (set-timestamp! conn) (vector-set! conn  1 (get-current-time)))
-(define (set-curr-timestamp!) (set-timestamp! curr-conn))
-(define (get-curr-elapsed-time) (get-elapsed-time (vector-ref curr-conn 1)))
-(define (get-input conn) (vector-ref conn 2)) ;; TODO use something like conn-info-ref and offsets ? actually, the only input got is from current connection, so maybe have that instead, NOT the same case for output, which uses on one occasion a generic connection, which cannot be guaranteed to be the current one
-(define (get-output conn) (vector-ref conn 3))
-(define (get-state-function conn) (vector-ref conn 4)) ;; TODO both get and set are used once, some kind of offset system might be a better idea, but not sure
-(define (set-state-function conn sf) (vector-set! conn 4 sf))
+;; TODO have conn-ref and offsets, just like pkt, so we save the getters / setters
+(define (conn-info-ref conn i) (u8vector-ref (vector-ref conn conn-info) i)) ;; TODO get rid ?
+(define (conn-info-set! conn i val) (u8vector-set! (vector-ref conn conn-info) i val))
+(define (set-timestamp!) (vector-set! curr-conn conn-timestamp (get-current-time))) ;; TODO add curr to name ?
+(define (get-curr-elapsed-time) (get-elapsed-time (vector-ref curr-conn conn-timestamp)))
 
 ;; a lock is represented as a vector, 1st element is #t if the stack wants to
 ;; access the connection, the 2nd is #t if the application wants to, the 3rd
 ;; is #t if the priority is to the application (see Peterson's algorithm)
 (define (stack-lock-conn)
   ;; the stack can only lock and unlock the current connection
-  (let ((lock ((vector-ref curr-conn 5))))
+  (let ((lock ((vector-ref curr-conn conn-lock))))
     (vector-set! lock 0 #t)
     (vector-set! lock 2 #t)
     (if (and (vector-ref lock 1) (vector-ref lock 2))
@@ -80,43 +81,40 @@
 	(begin (vector-set! lock 0 #f) (vector-set! lock 2 #t) #f)
 	#t)))
 ;; returns #f if we can't lock, so we can drop the packet instead of waiting
-(define (stack-release-conn) (vector-set! (vector-ref curr-conn 5) 0 #f))
+(define (stack-release-conn) (vector-set! (vector-ref curr-conn conn-lock) 0 #f))
 (define (app-lock-conn conn)
-  (let ((lock (vector-ref conn 5)))
+  (let ((lock (vector-ref conn conn-lock)))
     (vector-set! lock 1 #t)
     (vector-set! lock 2 #f)
     (if (and (vector-ref lock 0) (not (vector-ref lock 2)))
 	;; we can't lock the connection
 	(begin (vector-set! lock 1 #f) (vector-set! lock 2 #f) #f)
 	#t)))
-(define (app-release-conn conn) (vector-set! (vector-ref conn 5) 1 #f))
+(define (app-release-conn conn) (vector-set! (vector-ref conn conn-lock) 1 #f))
 
-
-;; comparison with packet data TODO put with other functions ?
 (define (=conn-info-pkt? pkt-idx c c-idx n)
-  (u8vector-equal-field? pkt pkt-idx (vector-ref c 0) c-idx n))
+  (u8vector-equal-field? pkt pkt-idx (vector-ref c conn-info) c-idx n))
 
 
 ;; creates a new connection with the info in the incoming packet
 ;; it becomes the current connection
 (define (new-conn)
   ;; TODO clean this up a bit, are some operations redundant ? are all necessary ?
-  (let ((c (vector (make-u8vector tcp-infos-size 0)
-                   #f
-                   (vector 0 0 (make-u8vector tcp-input-size 0))
-                   (vector 0 0 (make-u8vector tcp-output-size 0))
-                   tcp-syn-recv
-		   (vector #f #f #f))))
-    (add-conn-to-curr-port c)
-    (copy-pkt->curr-conn-info ip-destination-ip conn-self-ip 4) ;; TODO useful ?
-    (copy-pkt->curr-conn-info tcp-source-portnum conn-peer-portnum 2)
-    (copy-pkt->curr-conn-info ip-source-ip conn-peer-ip 4) ;; TODO why these 2 ? we can probably just swap when we create the response, no ?
-    (copy-pkt->curr-conn-info ethernet-source-mac conn-peer-mac 6) ;; TODO do we need this ? we can simply answer to the sender
-    (set-timestamp! c)
-    (u8vector-copy! (tcp-isn) 0 pkt tcp-self-seqnum 4)
-    (copy-pkt->curr-conn-info tcp-seqnum tcp-peer-seqnum 4)
-    (get-peer-mss tcp-options)
-    (set! curr-conn c)))
+  (set! curr-conn (vector (make-u8vector tcp-infos-size 0)
+			  #f
+			  (vector 0 0 (make-u8vector tcp-input-size 0))
+			  (vector 0 0 (make-u8vector tcp-output-size 0))
+			  tcp-syn-recv
+			  (vector #f #f #f)))
+  (add-conn-to-curr-port curr-conn) ;; TODO is it always the curr-conn ? if so, simplify
+  (copy-pkt->curr-conn-info ip-destination-ip conn-self-ip 4) ;; TODO useful ?
+  (copy-pkt->curr-conn-info tcp-source-portnum conn-peer-portnum 2)
+  (copy-pkt->curr-conn-info ip-source-ip conn-peer-ip 4) ;; TODO why these 2 ? we can probably just swap when we create the response, no ?
+  (copy-pkt->curr-conn-info ethernet-source-mac conn-peer-mac 6) ;; TODO do we need this ? we can simply answer to the sender
+  (set-timestamp!)
+  (u8vector-copy! (tcp-isn) 0 pkt tcp-self-seqnum 4)
+  (copy-pkt->curr-conn-info tcp-seqnum tcp-peer-seqnum 4)
+  (get-peer-mss tcp-options))
 
 
 ;; an input/output buffers is represented as a vector
@@ -135,7 +133,7 @@
 ;; TODO would be faster to look at the conf for a user, we can't since we don't know if it's an input or output buffer, maybe store a flag for this ? would not really be faster than getting the length, since picobit stores it with the vector
 ;; TODO maybe we can see which of the connection buffers is used
 
-(define (curr-buf-get-amount) (vector-ref (get-output curr-conn) 0))
+(define (curr-buf-get-amount) (vector-ref (vector-ref curr-conn conn-output) 0))
 ;; TODO change name so we see it's for an output buffer
 ;; TODO only used once, and in a debatable way
 (define (buf-inc-amount buf n) (vector-set! buf 0 (+ (vector-ref buf 0) n)))
@@ -157,9 +155,9 @@
 
 ;; TODO move with other info functions
 (define (copy-pkt->curr-conn-info pkt-idx conn-idx n) ;; TODO standardise name
-  (u8vector-copy! pkt pkt-idx (vector-ref curr-conn 0) conn-idx n))
+  (u8vector-copy! pkt pkt-idx (vector-ref curr-conn conn-info) conn-idx n))
 (define (copy-curr-conn-info->pkt pkt-idx conn-idx n) ;; TODO standardise name
-  (u8vector-copy! (vector-ref curr-conn 0) conn-idx pkt pkt-idx n))
+  (u8vector-copy! (vector-ref curr-conn conn-info) conn-idx pkt pkt-idx n))
 
 
 ;; TODO we're still doomed if offset if more than 24 bits
@@ -167,7 +165,7 @@
 ;; TODO is this used often enough to be worth it ?
 ;; TODO not really an increment
 (define (increment-curr-conn-info! idx n offset)
-  (u8vector-increment! (vector-ref curr-conn 0) idx n offset))
+  (u8vector-increment! (vector-ref curr-conn conn-info) idx n offset))
 
 ;; Links the current connection with the corresponding application
 ;; sends the connection to the application, which can then access it at
@@ -229,7 +227,7 @@
 (define (tcp-read c . n) ;; TODO quite ugly
   (if (and (app-lock-conn c)
            (<= (conn-info-ref c conn-state) CLOSED)) ;; active or closed
-      (let* ((buf (get-input c))
+      (let* ((buf (vector-ref c conn-input))
 	     (available (vector-ref buf 0)) ; amount of data in the buffer
 	     (amount (if (null? n)
 			 available
@@ -248,7 +246,7 @@
 (define (tcp-write c data)
   (if (and (app-lock-conn c)
            (= (conn-info-ref c conn-state) ACTIVE))
-      (let* ((buf (get-output c))
+      (let* ((buf (vector-ref c conn-output))
 	     (amount (min (buf-free-space buf) (u8vector-length data)))
 	     (out (if (> amount 0)
 		      (begin ;; TODO change one of the 2 pointers, once we have them

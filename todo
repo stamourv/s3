@@ -1,7 +1,7 @@
 to count lines : grep "^[^;]" *.scm | wc -l
 
 down to 5703 bytes (from what ? something put it higher, no idea what)
-now 5652, 5641, 5626, 5602, 5570, 5442, 5424, 5413, 5414, 5401, 5395, 5370, 5354, 5337, 5323, 5307, 5294, 5281, 5275
+now 5652, 5641, 5626, 5602, 5570, 5442, 5424, 5413, 5414, 5401, 5395, 5370, 5354, 5337, 5323, 5307, 5294, 5281, 5275, 5259, 5238
 
 figure out dependencies for each module
 

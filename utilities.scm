@@ -53,7 +53,7 @@
        start (- end 1) ;; TODO had set!s not on globals
        (add-16bits-1comp pseudo (* 256 (u8vector-ref pkt (- end 1))))))
   (pkt-checksum-loop start end pseudo))
-;; TODO ok, seems the pseudo is used to calculate the checksum of a larger zone than planned, icmp doesn't use it, ip sends the checksum of it's options
+;; TODO ok, seems the pseudo is used to calculate the checksum of a larger zone than planned, icmp doesn't use it, ip sends the checksum of its options
 (define (pkt-checksum-loop start end sum)
   (if (< start end)
       (pkt-checksum-loop (+ start 2)
@@ -72,12 +72,12 @@
 
 ;; Compute the checksum of the given 16-bit words
 ;; must be called with "val" = 0 TODO why not use an internal loop function ?
-;; TODO is this useful in calculating the real checksum
 (define (pseudo-checksum 16bits-words val) ;; TODO use a simple reduce ?
   (if (null? 16bits-words)
       val
       (pseudo-checksum (cdr 16bits-words)
                        (add-16bits-1comp (car 16bits-words) val))))
+;; TODO used with tcp and udp
 
 (define (valid-checksum? checksum)
   (= 65535 checksum)) ;; TODO really ? why not use 0 ? would be faster

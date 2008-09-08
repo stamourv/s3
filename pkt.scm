@@ -48,7 +48,7 @@
 (define ip-checksum                  24)
 (define ip-source-ip                 26)
 (define ip-destination-ip            30)
-(define ip-options                   34) ;; TODO not supported as of now
+(define ip-options                   34) ; not supported as of now
 (define ip-header-length 20)
 
 ;; TODO everything after ip would have to be functions (because of options that change), instead, let's try to have functions like ip-data-ref, tcp-data-ref, etc that add the offset for us. that is, when weadd options

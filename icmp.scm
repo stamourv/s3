@@ -43,7 +43,7 @@
 
 (define (icmp-send-echo-reply)
   (icmp-encapsulation icmp-echo-reply (- (pkt-ref-2 ip-length)
-                                         (get-ip-header-length) ;; TODO can we copy options too if we received some ?
+                                         ip-header-length
                                          icmp-header-length)))
 ;; TODO if we have a pkt-len var, we wouldn't have to calculate the length like this, it would simply remain unchanged
 
@@ -79,7 +79,7 @@
   (u8vector-copy! pkt ip-source-ip pkt ip-destination-ip 4) ;; TODO abstract that
   (u8vector-copy! my-ip 0 pkt ip-source-ip 4)
   (integer->pkt 0 ip-checksum 2)
-  (u8vector-set! pkt ip-protocol ip-protocol-ICMP) ;; TODO unlike other protocols, this change is necessary, since ICMP packets can be sent in response to other protocols
+  (u8vector-set! pkt ip-protocol ip-protocol-icmp) ;; TODO unlike other protocols, this change is necessary, since ICMP packets can be sent in response to other protocols
   (u8vector-set! pkt ip-time-to-live 255) ;; TODO should be done in IP
   (u8vector-set! pkt ip-service 0) ; TODO fields are not set in order, reason ?
   (set-ip-fragment-offset) ;; TODO use ip encapsulation ? then we can inline this function

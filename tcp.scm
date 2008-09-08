@@ -12,22 +12,17 @@
 
 ;; specific manipulations of some subfields
 (define (get-tcp-flags) (modulo (u8vector-ref pkt tcp-flags) 64))
-(define (get-tcp-header-length)
+(define (get-tcp-header-length) ;; TODO get rid of options support ?
   (* 4 (quotient (u8vector-ref pkt tcp-header-length) 16)))
 ;; we have to multiply by 4 since the header size is measured in words
-(define (set-tcp-header-length)
-  (u8vector-set! pkt
-		 tcp-header-length
-		 (* (quotient (+ tcp-options-length 20) 4) 16)))
-;; TODO used once, inline ?
 
 
 ;; called when a TCP packet is received
 (define (tcp-pkt-in)
   (set! tcp-options-length (- (get-tcp-header-length) 20))
-  (set! data-length (- (pkt-ref-2 ip-length) (get-tcp-header-length)))
-  ;; TODO shouldn't we also subtract the length of the ip header ? and options ?
-  (if (valid-tcp-checksum?)
+  (set! data-length (- (pkt-ref-2 ip-length) (get-tcp-header-length))) ;; TODO also remove ip header length ? would be the right thing, I guess
+  (if (or (= (pkt-ref-2 tcp-checksum) 0) ; valid or no checksum ?
+	  (valid-checksum? (compute-tcp-checksum)))
       (let ((port (search-port
 		   (pkt-ref-2 tcp-destination-portnum)
 		   tcp-ports)))
@@ -35,33 +30,29 @@
 	    ;; TODO use a not so the failure is closer to the condition ?
 	    (begin (set! curr-port port)
 		   ((make-transmission-to-conn tcp-source-portnum) tcp-listen))
-	    ;; TODO quite ugly
 	    (icmp-send-port-unreachable-error)))))
 
 
-;; Checksum validation
-(define (valid-tcp-checksum?) (if (= (pkt-ref-2 tcp-checksum) 0)
-                                  #t
-                                  (valid-checksum? (compute-tcp-checksum))))
+(define (compute-tcp-checksum)
+  (pkt-checksum tcp-header
+                (+ ip-header (pkt-ref-2 ip-length))
+                (compute-tcp-pseudo-checksum))) ;; TODO is the pseudo needed ?
 (define (compute-tcp-pseudo-checksum)
   (let ((tcp-length (- (pkt-ref-2 ip-length)
-		       (get-ip-header-length))))
+		       ip-header-length)))
     (pseudo-checksum (list (u8vector-ref pkt ip-protocol) ;; TODO use a u8vector-ref-field pkt, and then vector->list ?
                            tcp-length ;; TODO shouldn't we simply add this range to the real checksum ? maybe since then length is not there yet, it can cause problems
+			   ;; TODO the first 2 are not 16 values, I think
                            (pkt-ref-2 ip-source-ip)
                            (pkt-ref-2 (+ ip-source-ip 2))
                            (pkt-ref-2 ip-destination-ip)
                            (pkt-ref-2 (+ ip-destination-ip 2)))
                      0)))
-(define (compute-tcp-checksum)
-  (pkt-checksum tcp-header
-                (+ ip-header (pkt-ref-2 ip-length)) ;; TODO known statically ? no options
-                (compute-tcp-pseudo-checksum)))
 
 
 ;;second tranmission : TODO inline this horror ? used only once in tcp-pkt-in
-(define (make-transmission-to-conn src-portnum-idx) ;; TODO used only once
-  (lambda (P-listen) ;; TODO why return a lambda, I'm scared to find out    
+(define (make-transmission-to-conn src-portnum-idx)
+  (lambda (P-listen) ;; TODO why return a lambda, I'm scared to find out, it's called right after it's created, always with tcp-listen as argument
     (let ((target-connection
 	   (memp (lambda (c)
 		   (and (=conn-info-pkt? src-portnum-idx c conn-peer-portnum 2)
@@ -70,7 +61,7 @@
 		 (get-curr-conns))))
       (if target-connection
 	  (begin (set! curr-conn target-connection)
-		 ((get-state-function target-connection)))
+		 ((vector-ref target-connection conn-state-function)))
 	  (P-listen)))))
 
 
@@ -80,7 +71,7 @@
 
 ;; to get the peer's segment's maximum size encoded in the packet
 (define (get-peer-mss pkt-idx)
-  (cond ((or (>= (- pkt-idx tcp-header) ; TODO was (+ (get-ip-header-length) ip-header), but tcp-header considers ip options WRONG, tcp-header is constant, so if we receive options, won't work
+  (cond ((or (>= (- pkt-idx tcp-header)
                  (get-tcp-header-length))
              (= (u8vector-ref pkt pkt-idx) 0)) ; we reached the end of the option list
          (conn-info-set! curr-conn tcp-peer-mss tcp-output-size))
@@ -182,7 +173,8 @@
            (if (and (inclusive-tcp-flag? ACK) (valid-acknum?))
 	       ;; we have received an ACK, we can consume the data that was
 	       ;; acknowledged
-               (buf-consume (get-output curr-conn) (self-acknowledgement)))
+               (buf-consume (vector-ref curr-conn conn-output)
+			    (self-acknowledgement)))
            (if (inclusive-tcp-flag? FIN)
                (begin (pass-to-another-state tcp-close-wait #f #t #t)
                       (tcp-transferts-controller #f ACK #t #t))
@@ -311,12 +303,12 @@
                                special-flag-to-send?
                                special-flag-to-ack?
                                peer-ack?)
-  (set-state-function curr-conn new-state-f)
+  (vector-set! curr-conn conn-state-function new-state-f)
   (conn-info-set! curr-conn tcp-attempts-count 0)
   (if special-flag-to-ack? (self-acknowledgement))
   (if special-flag-to-send? (conn-info-set! curr-conn tcp-self-ack-units 1))
   (if peer-ack? (increment-curr-conn-info! tcp-peer-seqnum 4 1))
-  (set-curr-timestamp!))
+  (set-timestamp!))
 
 
 (define (tcp-receiver) ;; TODO used only once
@@ -324,7 +316,7 @@
 	 
 	 ;; TODO inline simple-receiver ? or could it end up being used by udp?
 
-	 (simple-receiver (+ (get-ip-header-length) (get-tcp-header-length)))))
+	 (simple-receiver (+ ip-header-length (get-tcp-header-length)))))
     (if in-amount
         (begin (increment-curr-conn-info! tcp-peer-seqnum 4 in-amount)
                in-amount)
@@ -341,7 +333,7 @@
   (let ((in-amount (input? headers-size)))
     (if in-amount 
 	(begin (input-has-succeeded? in-amount tcp-data)
-	       (set-curr-timestamp!)
+	       (set-timestamp!)
 	       in-amount)
 	#f)))
 
@@ -349,12 +341,12 @@
 ;Yes : we transmit input datas and return the number of bytes.
 ;No : returns #f
 (define (input-has-succeeded? in-amount pkt-idx)
-  (if (<= in-amount (buf-free-space (get-input curr-conn))) ;; TODO maybe put as much as we can and only ack that ? or would it be too complex ?
+  (if (<= in-amount (buf-free-space (vector-ref curr-conn conn-input))) ;; TODO maybe put as much as we can and only ack that ? or would it be too complex ?
       (begin (copy-u8vector->buffer! pkt ; copy data to connection input buffer
 				     pkt-idx
-				     (get-input curr-conn)
+				     (vector-ref curr-conn conn-input)
 				     in-amount)
-	     (buf-inc-amount (get-input curr-conn) in-amount) 
+	     (buf-inc-amount (vector-ref curr-conn conn-input) in-amount) 
 	     in-amount)
       #f))
 
@@ -363,7 +355,7 @@
   (let ((out-amount (tcp-output?))) ;; TODO only use of tcp-output?
     (if out-amount
         (begin
-	  (copy-buffer->u8vector! (get-output curr-conn)
+	  (copy-buffer->u8vector! (vector-ref curr-conn conn-output)
 				  pkt ; copy data to connection output buffer
 				  tcp-data
 				  out-amount)
@@ -398,7 +390,7 @@
     (if (> (u8vector-ref pkt tcp-flags) 0)
         (begin
           (if (> flags 0) (increment-curr-conn-info! tcp-attempts-count 1 1))
-          (set-curr-timestamp!)
+          (set-timestamp!)
           (tcp-encapsulation out-amount)))))
 
 
@@ -459,14 +451,19 @@
   (let ((len (+ 20 tcp-options-length (if amount amount 0))))
     (integer->pkt 0 tcp-urgent-data-pointer 2)
     (integer->pkt 0 tcp-checksum 2)
-    (integer->pkt (buf-free-space (get-input curr-conn)) tcp-window 2)
-    (set-tcp-header-length)
+    (integer->pkt (buf-free-space (vector-ref curr-conn conn-input)) tcp-window 2)
+    (u8vector-set! pkt ; set the header length
+		   tcp-header-length
+		   ;; the length (in bytes) converted to 32-bit words and
+		   ;; shifted 4 bits to the left
+		   ;; which gives : (* (quotient header-length 4) 16)
+		   (* (+ tcp-options-length 20) 4)) ;; TODO if we get rid of options, have static
     (copy-curr-conn-info->pkt tcp-acknum tcp-peer-seqnum 4)
     (copy-curr-conn-info->pkt tcp-seqnum tcp-self-seqnum 4)
     (copy-curr-conn-info->pkt tcp-destination-portnum conn-peer-portnum 2)
     (integer->pkt (conf-ref curr-port conf-portnum) tcp-source-portnum 2)
     (ip-encapsulation
      (u8vector-ref-field (vector-ref curr-conn 0) conn-peer-ip 4)
-     tcp-checksum ;; TODO this has to be calculated with the correct ip header, but passing it is quite ugly
+     tcp-checksum
      compute-tcp-checksum
      len)))
