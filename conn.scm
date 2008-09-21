@@ -10,7 +10,7 @@
 ;; TODO merge all this with tcp ? it's only used with tcp. would result in a huge file, though
 
 ;; connection structures are represented as vectors :
-;; FORMAT: 5 fields:
+;; FORMAT: 6 fields:
 ;; -0: informations (u8vector)
 ;;     contains:
 ;;     - which of the stack's IP addresses uses the connection

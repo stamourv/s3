@@ -1,7 +1,12 @@
 to count lines : grep "^[^;]" *.scm | wc -l
 
 down to 5703 bytes (from what ? something put it higher, no idea what)
-now 5652, 5641, 5626, 5602, 5570, 5442, 5424, 5413, 5414, 5401, 5395, 5370, 5354, 5337, 5323, 5307, 5294, 5281, 5275, 5259, 5238
+now 5652, 5641, 5626, 5602, 5570, 5442, 5424, 5413, 5414, 5401, 5395, 5370, 5354, 5337, 5323, 5307, 5294, 5281, 5275, 5259, 5238, 5222
+
+5260 with the arp check back in
+5243, 5235, 5227
+5152 with icmp-encapsulation calling ip-encapsulation
+5127, 5069, 5045, 5023
 
 figure out dependencies for each module
 
@@ -32,6 +37,14 @@ CHANGE BUFFERS TO HAVE 2 POINTERS
 
 replace src dst pkt, etc
 
+udp output should make an ARP request if necessary to find the MAC of the target
+
+change udp-encapsulation to udp-write
+
+bug with ip checksum check, see on laptop, discovered during tests
 
 kill list
 get-ip-header-len -- has to do with options, let's choke on then and have this constant at 20
+
+
+FIX THE FILES TO LOAD PROBLEM, ALWAYS HAVE TO CHANGE THE PATH

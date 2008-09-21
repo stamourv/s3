@@ -23,7 +23,7 @@
 ;; TCP configuration
 
 ;; maximum life time of a tcp connection without any activation
-;; TODO explain better ?
+;; TODO explain better ? which unit ?
 (define tcp-max-life-time 30)
 ;; delay before retransmission
 (define tcp-retransmission-delay 5)

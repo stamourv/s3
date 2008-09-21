@@ -13,11 +13,20 @@
   ;; is it for us ?
   (if (or (u8vector-equal-field? pkt ethernet-destination-mac broadcast-mac 0 6)
 	  (u8vector-equal-field? pkt ethernet-destination-mac my-mac 0 6))
-      (let ((higher-protocol (u8vector-ref-field pkt ethernet-frame-type 2)))
-	(cond ((equal? higher-protocol ethernet-frame-type-ipv4) (ip-pkt-in))
-	      ((equal? higher-protocol ethernet-frame-type-arp)  (arp-pkt-in))
-	      ((equal? higher-protocol ethernet-frame-type-rarp) (rarp-pkt-in))
-	      (else #f)))
+      ;; dispatch. there is a lot of repetition, but it results in a smaller
+      ;; code size than if we did a u8vector-ref-field and matched it,
+      ;; plus we save a vector allocation
+      ;; (the offset is a constant, so is inlined by picobit anyway)
+      (cond ((u8vector-equal-field? pkt ethernet-frame-type
+				    ethernet-frame-type-ipv4 0 2)
+	     (ip-pkt-in))
+	    ((u8vector-equal-field? pkt ethernet-frame-type
+				    ethernet-frame-type-arp 0 2)
+	     (arp-pkt-in))
+	    ((u8vector-equal-field? pkt ethernet-frame-type
+				    ethernet-frame-type-rarp 0 2)
+	     (rarp-pkt-in))
+	    (else #f))
       #f))
 
 ;; TODO maybe have a more general version that takes the destination as parameter ? would be good for UDP
@@ -27,4 +36,3 @@
   ;; we don't need to set the ethernet frame type, since it's the same as on
   ;; the original packet
   (send-frame (+ 14 len)))
-;; TODO pad if necessary up to 46 bytes (does this include the header ?) ? maybe hardware does it

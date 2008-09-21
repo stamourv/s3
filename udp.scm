@@ -6,28 +6,23 @@
 ;; called when an UDP datagram is received
 (define (udp-pkt-in)
   (if (or (= (pkt-ref-2 udp-checksum) 0) ; valid or no checksum ?
-	  (valid-checksum? (compute-udp-checksum)))
+	  (= 65535(compute-udp-checksum)))
       (let ((port (search-port (pkt-ref-2 udp-destination-portnum) udp-ports)))
 	(if (and port (pass-app-filter? udp-source-portnum port))
 	    ((conf-ref port conf-reception)
-	     (u8vector-ref-field pkt ip-source-ip 4)
-	     (u8vector->portnum (u8vector-ref-field pkt udp-source-portnum 2))
-	     (u8vector-ref-field pkt udp-data (- (pkt-ref-2 udp-length) 8)))
-	    (icmp-send-port-unreachable-error))))) ; no app listens to this port
+	     (u8vector-ref-field pkt ip-source-ip 4) ; length 4 u8vector
+	     (u8vector->portnum (u8vector-ref-field pkt udp-source-portnum 2)) ; integer
+	     (u8vector-ref-field pkt udp-data (- (pkt-ref-2 udp-length) 8))) ; u8vector
+	    (icmp-unreachable icmp-port-unreachable))))) ; no app listens to this port
 
 (define (compute-udp-checksum)
-  (let ((start udp-header))
-    ;; we start at the beginning of the udp header
-    (pkt-checksum start
-		  (+ start (pkt-ref-2 udp-length))
-		  (udp-pseudo-checksum))))
-(define (udp-pseudo-checksum) ;; TODO can this use the already defined pseudo-checksum ? what does it calculate ? seems like we add some parts of the ip and some parts of the udp header
-  (add-16bits-1comp (pkt-ref-2 udp-length)
-                    (add-16bits-1comp (u8vector-ref pkt ip-protocol)
-                                      (pkt-checksum ip-source-ip
-                                                    (+ 8 ip-source-ip)
-                                                    0))))
-;; TODO see if we can get rid of this pseudo thing
+  (let ((udp-len (pkt-ref-2 udp-length)))
+    (pkt-checksum
+     ip-source-ip
+     ;; the UDP pseudo-header uses values located before the UDP header
+     (+ udp-header udp-len)
+     (add-16bits-1comp 17 ; UDP protocol ID, with leading zeroes up to 16 bits
+		       udp-len))))
 
 
 ;; UDP outgoing packet treatment
@@ -37,7 +32,7 @@
 ;; TODO is it clean to take the src-port as parameter ?
 ;; TODO was not tested at all
 ;; TODO won't work, we don't know the hardware address if this was not sent in response to something else, would have to send an ARP request, or keep a cache of who sent data, linking ip addresses with mac (if we do only that, we can't initiate anything) DANGER
-(define (udp-encapsulation dst-ip src-portnum dst-portnum data)
+(define (udp-write dst-ip src-portnum dst-portnum data)
   (let* ((data-length (u8vector-length data))
 	 (len (+ 8 data-length)))
     (u8vector-copy! data 0 pkt udp-data data-length)

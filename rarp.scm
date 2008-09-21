@@ -31,4 +31,4 @@
 
 (define (rarp-get-ip)
   (cdr (assoc (u8vector-ref-field pkt arp-source-hardware-address 6)
-	      rarp-mac-ip-alist)))
+	      rarp-mac-ip-alist))) ;; TODO maybe use a custom assoc which takes the check as parameter, to avoid allocating a vector just for that

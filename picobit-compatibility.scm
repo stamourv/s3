@@ -1,7 +1,8 @@
+
 ;;;; Vincent St-Amour
 ;;;; picobit-compatibility.scm
 
-(include "~/recherche/s3/stack/files-to-load.scm")
+(include "./files-to-load.scm")
 
 ;; TODO just so the code does something
 ; (whole-pkt-set! '#u8(255 255 255 255 255 255 136 153 170 187 204 221 221 8 6 0 1 8 0 6 4 0 1 136 153 170 187 204 221 192 168 1 104 0 0 0 0 0 0 255 255 255 255))
