@@ -7,6 +7,8 @@ now 5652, 5641, 5626, 5602, 5570, 5442, 5424, 5413, 5414, 5401, 5395, 5370, 5354
 5243, 5235, 5227
 5152 with icmp-encapsulation calling ip-encapsulation
 5127, 5069, 5045, 5023, 5017, 4986, 4812
+4689 : no idea what happened, only changed the rarp list lookup (which had no effect, I reverted it), there must have been a large change after which I forgot to compile, hope it didn't break anything
+4678, 4622 (got rid of about 12 useless let's), 4610
 
 figure out dependencies for each module
 

@@ -13,7 +13,8 @@
 
 ;; called when a TCP packet is received
 (define (tcp-pkt-in)
-  (set! data-length (- (pkt-ref-2 ip-length) 20))
+  ;; 40 is the sum of the sizesof the IP and TCP headers
+  (set! data-length (- (pkt-ref-2 ip-length) 40))
   (cond ((not (= (u8vector-ref pkt tcp-header-length-offset) 80)) ;; TODO have this 80 in a variable ?
 	 ;; the packet has TCP options (header longer than 20 bytes), we reject
 	 ;; it. since the length is then always 20 bytes, followed by 4 reserved
@@ -26,17 +27,28 @@
 		   (pkt-ref-2 tcp-destination-portnum)
 		   tcp-ports)))
 	(if (and port (pass-app-filter? tcp-source-portnum port))
-	    (begin (set! curr-port port)
-		   (let ((target-connection ;; TODO inlined, clean it up
-			  (memp (lambda (c)
-				  (and (=conn-info-pkt? tcp-source-portnum c conn-peer-portnum 2)
-				       (=conn-info-pkt? ip-source-ip c conn-peer-ip 4)
-				       (=conn-info-pkt? ip-destination-ip c conn-self-ip 4)))
-				(get-curr-conns))))
-		     (if target-connection
-			 (begin (set! curr-conn target-connection)
-				((vector-ref target-connection conn-state-function))) ; call state function
-			 (tcp-listen))))
+	    (begin
+	      (set! curr-port port)
+	      (let ((target-connection
+		     (memp (lambda (c)
+			     (and (=conn-info-pkt? tcp-source-portnum c conn-peer-portnum 2)
+				  (=conn-info-pkt? ip-source-ip c conn-peer-ip 4)
+				  (=conn-info-pkt? ip-destination-ip c conn-self-ip 4)))
+			   (get-curr-conns))))
+		(if target-connection
+		    (begin (set! curr-conn target-connection)
+			   ;; call the current state function TODO which sets a new one in the structure ? make sure
+			   ((vector-ref target-connection conn-state-function)))
+		    ;; no matching connection was found, if we have not yet
+		    ;; reached the maximum number of connections, establish a
+		    ;; new one
+		    (if (and (< (length (get-curr-conns)) ;; TODO this actually was a state function (tcp-listen)
+				(conf-ref curr-port conf-max-conns))
+			     ;; the handshake must begin with a SYN
+			     (exclusive-tcp-flag? SYN))
+			(begin (new-conn) ; this sets the new connection as the current one
+			       (pass-to-another-state tcp-syn-recv #t #f #t)
+			       (tcp-transfers-controller (+ SYN ACK) #f #f))))))
 	    (icmp-unreachable icmp-port-unreachable)))))
 
 
@@ -60,120 +72,91 @@
 
 ;; tcp state time-wait
 (define (tcp-time-wait)
-  (let ((phase2 (lambda () #t))
-        (inspection (lambda () (if (> (get-curr-elapsed-time)
-                                      tcp-time-to-wait)
-                                   (tcp-end)))))
-    (tcp-state-function phase2 inspection)))
+  (tcp-state-function
+   (lambda () #t)
+   (lambda () (if (> (get-curr-elapsed-time) tcp-time-to-wait)
+		  (tcp-end)))))
 
 ;; tcp state fin-wait-2
 (define (tcp-fin-wait-2)
-  (let ((phase2
-         (lambda ()
-           (if (inclusive-tcp-flag? FIN)
-               (begin (pass-to-another-state tcp-time-wait #f #f #t)
-                      (tcp-transfers-controller ACK #t #f))
-               (tcp-transfers-controller 0 #t #f))))
-        (inspection (make-closed-inspection 0)))
-    (tcp-state-function phase2 inspection)))
+  (tcp-state-function
+   (lambda () (if (inclusive-tcp-flag? FIN)
+		  (begin (pass-to-another-state tcp-time-wait #f #f #t)
+			 (tcp-transfers-controller ACK #t #f))
+		  (tcp-transfers-controller 0 #t #f)))
+   (make-closed-inspection 0))) ;; TODO what's that, inline ?
 
 
 ;; tcp state closing
 (define (tcp-closing)
-  (let ((phase2
-         (lambda ()
-           (if (and (inclusive-tcp-flag? ACK)
-                    (valid-acknum?))
-               (begin (pass-to-another-state tcp-time-wait #f #t #f)
-                      (tcp-transfers-controller ACK #f #f)))))
-        (inspection
-         (make-closed-inspection FIN)))
-    (tcp-state-function phase2 inspection)))
+  (tcp-state-function
+   (lambda () (if (and (inclusive-tcp-flag? ACK)
+		       (valid-acknum?))
+		  (begin (pass-to-another-state tcp-time-wait #f #t #f)
+			 (tcp-transfers-controller ACK #f #f))))
+   (make-closed-inspection FIN)))
 
 
 ;; tcp state fin-wait-1
 (define (tcp-fin-wait-1)
-  (let ((phase2
-         (lambda ()
-           (if (inclusive-tcp-flag? FIN)
-               (begin
-                 (if (and (inclusive-tcp-flag? ACK)
-                          (valid-acknum?))
-                     (pass-to-another-state tcp-time-wait #f #t #t)
-                     (pass-to-another-state tcp-closing #f #f #t))
-                 (tcp-transfers-controller ACK #t #f))
-               (begin (if (and (inclusive-tcp-flag? ACK)
-                               (valid-acknum?))
-                          (pass-to-another-state tcp-fin-wait-2 #f #t #f))
-                      (tcp-transfers-controller 0 #t #f)))))
-        (inspection
-         (make-closed-inspection  FIN)))
-    (tcp-state-function phase2 inspection)))
+  (tcp-state-function
+   (lambda () (if (inclusive-tcp-flag? FIN)
+		  (begin (if (and (inclusive-tcp-flag? ACK)
+				  (valid-acknum?))
+			     (pass-to-another-state tcp-time-wait #f #t #t)
+			     (pass-to-another-state tcp-closing #f #f #t))
+			 (tcp-transfers-controller ACK #t #f))
+		  (begin (if (and (inclusive-tcp-flag? ACK)
+				  (valid-acknum?))
+			     (pass-to-another-state tcp-fin-wait-2 #f #t #f))
+			 (tcp-transfers-controller 0 #t #f))))
+   (make-closed-inspection FIN)))
 
 
-                                        ;tcp state last-ack
+;; tcp state last-ack
 (define (tcp-last-ack)
-  (let ((phase2
-         (lambda ()
-           (if (and (inclusive-tcp-flag? ACK)
-                    (valid-acknum?))
-               (tcp-end))))
-        (inspection  (make-closed-inspection FIN)))
-    (tcp-state-function phase2 inspection)))
+  (tcp-state-function
+   (lambda () (if (and (inclusive-tcp-flag? ACK)
+		       (valid-acknum?))
+		  (tcp-end)))
+   (make-closed-inspection FIN)))
 
 
-                                        ;tcp state close-wait
+;; tcp state close-wait
 (define (tcp-close-wait)
-  (let ((phase2 (lambda ()
-                  (if (and (inclusive-tcp-flag? ACK) (valid-acknum?))
-                      (self-acknowledgement))
-                  (tcp-transfers-controller 0 #f #t)))
-        (inspection (make-opened-inspection 0 #t tcp-last-ack #f #f)))
-    (tcp-state-function phase2 inspection)))
+  (tcp-state-function
+   (lambda ()
+     (if (and (inclusive-tcp-flag? ACK) (valid-acknum?))
+	 (self-acknowledgement))
+     (tcp-transfers-controller 0 #f #t)) ;; TODO make sure it's right
+   (make-opened-inspection 0 #t tcp-last-ack #f #f)))
 
 
-                                        ;tcp state established
+;; tcp state established
 (define (tcp-established)
-  (let ((phase2
-         (lambda ()
-           (if (and (inclusive-tcp-flag? ACK) (valid-acknum?))
-	       ;; we have received an ACK, we can consume the data that was
-	       ;; acknowledged
-               (buf-consume (vector-ref curr-conn conn-output)
-			    (self-acknowledgement)))
-           (if (inclusive-tcp-flag? FIN)
-               (begin (pass-to-another-state tcp-close-wait #f #t #t)
-                      (tcp-transfers-controller ACK #t #t))
-               (tcp-transfers-controller 0 #t #t))))
-        (inspection (make-opened-inspection 0 #t tcp-fin-wait-1 #f #f)))
-    (tcp-state-function phase2 inspection)))
+  (tcp-state-function
+   (lambda ()
+     (if (and (inclusive-tcp-flag? ACK) (valid-acknum?))
+	 ;; we have received an ACK, we can consume the data that was
+	 ;; acknowledged
+	 (buf-consume (vector-ref curr-conn conn-output)
+		      (self-acknowledgement)))
+     (if (inclusive-tcp-flag? FIN)
+	 (begin (pass-to-another-state tcp-close-wait #f #t #t)
+		(tcp-transfers-controller ACK #t #t))
+	 (tcp-transfers-controller 0 #t #t)))
+   (make-opened-inspection 0 #t tcp-fin-wait-1 #f #f)))
 
-                                        ;tcp state syn-received
+;; tcp state syn-received
 (define (tcp-syn-recv)
-  (let ((phase2
-         (lambda ()
-           (cond ((inclusive-tcp-flag? FIN)
-                  (tcp-abort))
-                 ((and (inclusive-tcp-flag? ACK) (valid-acknum?))
-                  (link-to-app)
-                  (pass-to-another-state tcp-established #f #t #f) ;; TODO yuck, no way to see what the flags for these 2 calls mean
-                  (tcp-transfers-controller 0 #t #t)))))
-        (inspection (make-opened-inspection (+ SYN ACK)
-                                            #f ;; TODO same here
-                                            tcp-fin-wait-1
-                                            #t
-                                            #f)))
-    (tcp-state-function phase2 inspection)))
-
-
-					;tcp state listen
-(define (tcp-listen)
-  (if (and (< (length (get-curr-conns))
-	      (conf-ref curr-port conf-max-conns))
-           (exclusive-tcp-flag? SYN))
-      (begin (new-conn)
-             (pass-to-another-state tcp-syn-recv #t #f #t)
-             (tcp-transfers-controller (+ SYN ACK) #f #f))))
+  (tcp-state-function
+   (lambda () (cond ((inclusive-tcp-flag? FIN)
+		     (tcp-abort))
+		    ((and (inclusive-tcp-flag? ACK) (valid-acknum?))
+		     (link-to-app)
+		     (pass-to-another-state tcp-established #f #t #f)
+		     (tcp-transfers-controller 0 #t #t))))
+   (make-opened-inspection (+ SYN ACK) #f tcp-fin-wait-1 #t #f)))
 
 
 ;; Tools for TCP state functions
@@ -187,25 +170,16 @@
 (define URG 32)
 
 
-(define (tcp-abort)
-  (tcp-transfers-controller RST #f #f)
-  (abort))
-(define (tcp-closed) #f)
-(define (tcp-end)
-  (pass-to-another-state tcp-closed #f #f #f)
-  (end))
-
-
 ;; set the general connection state to ABORTED
 ;; which means the connection cannot be used anymore because of a protocol
 ;; error or a too long inactivity period.
-(define (abort)
-  (conn-info-set! curr-conn conn-state ABORTED)
+(define (tcp-abort)
+  (tcp-transfers-controller RST #f #f)
+  (conn-info-set! curr-conn conn-state ABORTED) ;; TODO try to get rid of these states
   (detach-curr-conn))
-
-;; set the general connection state to END
-;; the connection cannot be used, but it has ended properly.
-(define (end)
+;; close the connection, it has ended properly
+(define (tcp-end)
+  (pass-to-another-state (lambda () #f) #f #f #f)
   (conn-info-set! curr-conn conn-state END)
   (detach-curr-conn))
 

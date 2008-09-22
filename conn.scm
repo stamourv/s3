@@ -96,7 +96,7 @@
 
 ;; creates a new connection with the info in the incoming packet
 ;; it becomes the current connection
-(define (new-conn)
+(define (new-conn) ;; TODO used only once
   ;; TODO clean this up a bit, are some operations redundant ? are all necessary ?
   (set! curr-conn (vector (make-u8vector tcp-infos-size 0)
 			  #f
@@ -275,4 +275,4 @@
   (if (and (app-lock-conn c)
            (<= (conn-info-ref c conn-state) CLOSED))
       (begin (conn-info-set! c conn-state ABORTED) (app-release-conn c) #t)
-      #f))
+      #f)) ;; TODO without the lock, this would be useless

@@ -3,12 +3,18 @@
 
 ;;;  general purpose procedures
 
-;; generic search function, that returns the first element of a list that
-;; obeys a predicate
+;; member with a given predicate
 (define (memp pred l) ;; TODO name ? was search
   (cond ((null? l) #f)
         ((pred (car l)) (car l))
         (else (memp pred (cdr l)))))
+
+;; assoc with a given predicate
+(define assp
+  (lambda (p l)
+    (cond ((null? l) #f)
+	  ((p (caar l)) (car l))
+	  (else (assp p (cdr l))))))
 
 
 ;; DATA MANIPULATION
