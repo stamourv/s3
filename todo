@@ -6,7 +6,7 @@ now 5652, 5641, 5626, 5602, 5570, 5442, 5424, 5413, 5414, 5401, 5395, 5370, 5354
 5260 with the arp check back in
 5243, 5235, 5227
 5152 with icmp-encapsulation calling ip-encapsulation
-5127, 5069, 5045, 5023
+5127, 5069, 5045, 5023, 5017, 4986, 4812
 
 figure out dependencies for each module
 
@@ -25,13 +25,10 @@ test everything to make sure it works
 
 when we bind a port, say for which address, or leave for everyone by default ?
 
-all mentions of options were removed, go see orig to see what there was
-
 getting rid of (define (=pkt-u8? i u8 n) (u8vector-equal-field? pkt i u8 0 n)) cost us 13 bytes, but saves in time, let's see what we decide later
 
 how to make sure that stack task really sends pendng output ? (implement stack-task)
 
-decide if we tolerate but ignore IP options, or choke on them altogether (also for TCP)
 
 CHANGE BUFFERS TO HAVE 2 POINTERS
 

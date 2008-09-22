@@ -18,7 +18,7 @@
    ((not (or (u8vector-equal-field? pkt ip-destination-ip my-ip 0 4) ; is it for us ?
 	     (u8vector-equal-field? pkt ip-destination-ip broadcast-ip 0 4)))
     #f)
-   ;; if the packet has options (header longer than 20 bytes), we reject it
+   ;; if the packet has IP options (header longer than 20 bytes), we reject it
    ;; since the header length we accept is only 20, and the version is always
    ;; 4, we only have to see if the byte is equal to (4 << 4) + (20 / 4) = 69
    ((not (= (u8vector-ref pkt ip-version-and-header-length) 69))

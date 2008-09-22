@@ -7,20 +7,19 @@
 ;;;    see "tcp-pkt-in"
 
 
-;; TODO what ?
-(define tcp-opt-mss (u8vector 2 4 0 tcp-input-size 1 1 1 0))
-
 ;; specific manipulations of some subfields
 (define (get-tcp-flags) (modulo (u8vector-ref pkt tcp-flags) 64))
-(define (get-tcp-header-length) ;; TODO get rid of options support ?
-  (* 4 (quotient (u8vector-ref pkt tcp-header-length) 16)))
-;; we have to multiply by 4 since the header size is measured in words
 
 
 ;; called when a TCP packet is received
 (define (tcp-pkt-in)
-  (set! tcp-options-length (- (get-tcp-header-length) 20))
-  (set! data-length (- (pkt-ref-2 ip-length) (get-tcp-header-length))) ;; TODO also remove ip header length ? would be the right thing, I guess
+  (set! data-length (- (pkt-ref-2 ip-length) 20))
+  (cond ((not (= (u8vector-ref pkt tcp-header-length-offset) 80)) ;; TODO have this 80 in a variable ?
+	 ;; the packet has TCP options (header longer than 20 bytes), we reject
+	 ;; it. since the length is then always 20 bytes, followed by 4 reserved
+	 ;; bits (which must be set to 0), we simply must check if the byte is
+	 ;; equal to (20 / 4) << 4 = 80
+	 #f))
   (if (or (= (pkt-ref-2 tcp-checksum) 0) ; valid or no checksum ?
 	  (= 65535 (compute-tcp-checksum)))
       (let ((port (search-port
@@ -52,26 +51,6 @@
 		     (- (pkt-ref-2 ip-length) ip-header-length)))) ; TCP length
 
 
-;;-------TCP connections ----------------------------
-;; TODO since only tcp has connections anymore, should we put conns (and ports) here, or put the next functions in conn ?
-;; TODO put the next stuff in conn ?
-
-;; to get the peer's segment's maximum size encoded in the packet
-(define (get-peer-mss pkt-idx)
-  (cond ((or (>= (- pkt-idx tcp-header)
-                 (get-tcp-header-length))
-             (= (u8vector-ref pkt pkt-idx) 0)) ; we reached the end of the option list
-         (conn-info-set! curr-conn tcp-peer-mss tcp-output-size))
-        ((= (u8vector-ref pkt pkt-idx) 1) ; we have a no-op in the tcp options
-         (get-peer-mss (+ pkt-idx 1))) ; continue checking for mss
-        ((= (u8vector-ref pkt pkt-idx) 2) ; we have found the mss
-         (let ((mss (pkt-ref-2 (+ pkt-idx 2))))
-           (if (> mss tcp-output-size)
-               (conn-info-set! curr-conn tcp-peer-mss tcp-output-size)
-               (conn-info-set! curr-conn tcp-peer-mss mss))))
-        ;; keep looking after the current option
-        (else (get-peer-mss (+ pkt-idx (u8vector-ref pkt (+ pkt-idx 1)))))))
-;; TODO this might have been broken
 
 ;;----------tcp state functions --------------------------------------------
 
@@ -93,8 +72,8 @@
          (lambda ()
            (if (inclusive-tcp-flag? FIN)
                (begin (pass-to-another-state tcp-time-wait #f #f #t)
-                      (tcp-transfers-controller #f ACK #t #f))
-               (tcp-transfers-controller #f 0 #t #f))))
+                      (tcp-transfers-controller ACK #t #f))
+               (tcp-transfers-controller 0 #t #f))))
         (inspection (make-closed-inspection 0)))
     (tcp-state-function phase2 inspection)))
 
@@ -106,7 +85,7 @@
            (if (and (inclusive-tcp-flag? ACK)
                     (valid-acknum?))
                (begin (pass-to-another-state tcp-time-wait #f #t #f)
-                      (tcp-transfers-controller #f ACK #f #f)))))
+                      (tcp-transfers-controller ACK #f #f)))))
         (inspection
          (make-closed-inspection FIN)))
     (tcp-state-function phase2 inspection)))
@@ -122,11 +101,11 @@
                           (valid-acknum?))
                      (pass-to-another-state tcp-time-wait #f #t #t)
                      (pass-to-another-state tcp-closing #f #f #t))
-                 (tcp-transfers-controller #f ACK #t #f))
+                 (tcp-transfers-controller ACK #t #f))
                (begin (if (and (inclusive-tcp-flag? ACK)
                                (valid-acknum?))
                           (pass-to-another-state tcp-fin-wait-2 #f #t #f))
-                      (tcp-transfers-controller #f 0 #t #f)))))
+                      (tcp-transfers-controller 0 #t #f)))))
         (inspection
          (make-closed-inspection  FIN)))
     (tcp-state-function phase2 inspection)))
@@ -148,8 +127,8 @@
   (let ((phase2 (lambda ()
                   (if (and (inclusive-tcp-flag? ACK) (valid-acknum?))
                       (self-acknowledgement))
-                  (tcp-transfers-controller #f 0 #f #t)))
-        (inspection (make-opened-inspection #f 0 #t tcp-last-ack #f #f)))
+                  (tcp-transfers-controller 0 #f #t)))
+        (inspection (make-opened-inspection 0 #t tcp-last-ack #f #f)))
     (tcp-state-function phase2 inspection)))
 
 
@@ -164,9 +143,9 @@
 			    (self-acknowledgement)))
            (if (inclusive-tcp-flag? FIN)
                (begin (pass-to-another-state tcp-close-wait #f #t #t)
-                      (tcp-transfers-controller #f ACK #t #t))
-               (tcp-transfers-controller #f 0 #t #t))))
-        (inspection (make-opened-inspection #f 0 #t tcp-fin-wait-1 #f #f)))
+                      (tcp-transfers-controller ACK #t #t))
+               (tcp-transfers-controller 0 #t #t))))
+        (inspection (make-opened-inspection 0 #t tcp-fin-wait-1 #f #f)))
     (tcp-state-function phase2 inspection)))
 
                                         ;tcp state syn-received
@@ -178,9 +157,8 @@
                  ((and (inclusive-tcp-flag? ACK) (valid-acknum?))
                   (link-to-app)
                   (pass-to-another-state tcp-established #f #t #f) ;; TODO yuck, no way to see what the flags for these 2 calls mean
-                  (tcp-transfers-controller #f 0 #t #t)))))
-        (inspection (make-opened-inspection tcp-opt-mss
-                                            (+ SYN ACK)
+                  (tcp-transfers-controller 0 #t #t)))))
+        (inspection (make-opened-inspection (+ SYN ACK)
                                             #f ;; TODO same here
                                             tcp-fin-wait-1
                                             #t
@@ -195,7 +173,7 @@
            (exclusive-tcp-flag? SYN))
       (begin (new-conn)
              (pass-to-another-state tcp-syn-recv #t #f #t)
-             (tcp-transfers-controller tcp-opt-mss (+ SYN ACK) #f #f))))
+             (tcp-transfers-controller (+ SYN ACK) #f #f))))
 
 
 ;; Tools for TCP state functions
@@ -210,7 +188,7 @@
 
 
 (define (tcp-abort)
-  (tcp-transfers-controller #f RST #f #f)
+  (tcp-transfers-controller RST #f #f)
   (abort))
 (define (tcp-closed) #f)
 (define (tcp-end)
@@ -246,7 +224,7 @@
 		     (cond ((not (=conn-info-pkt? tcp-seqnum curr-conn
 						  tcp-peer-seqnum 4))
 			    ;; seqnum is valid, do transfers
-			    (tcp-transfers-controller #f ACK #f #f)) ; TODO ok, so we send an ack saying what ? looks like we didn't get the data we were waiting for, why do we ack, shouldn't we simply discard it ?
+			    (tcp-transfers-controller ACK #f #f)) ; TODO ok, so we send an ack saying what ? looks like we didn't get the data we were waiting for, why do we ack, shouldn't we simply discard it ?
 			   ((inclusive-tcp-flag? RST)
 			    (tcp-abort)) ; TODO clean up, was simply inlined
 			   (else (tcp-reception-phase2))))))
@@ -256,8 +234,7 @@
 	  (inspection)))) ;; TODO wtf, using the other lock caused a problem in the tests, but got rid of the incriminating lock changes, without being able to figure out why they were there in the first place
 
 
-(define (make-opened-inspection options
-                                flags
+(define (make-opened-inspection flags
                                 transmitter-on?
                                 close-function
                                 special-flag-to-ack?
@@ -269,13 +246,10 @@
                                       #t
                                       special-flag-to-ack?
                                       peer-ack?)
-               (tcp-transfers-controller #f FIN #f #f))
-        (begin  (tcp-transfers-controller (if (retransmission-needed?)
-                                               options
-                                               #f)
-                                           flags
-                                           #f
-                                           transmitter-on?)))))
+               (tcp-transfers-controller FIN #f #f))
+        (begin  (tcp-transfers-controller flags
+					  #f
+					  transmitter-on?)))))
 
                                         ;Is there data in the output buffer of the current connection?
 (define (output?)
@@ -283,7 +257,7 @@
     (if (> amount 0) amount #f)))
 
 (define (make-closed-inspection flags)
-  (lambda () (tcp-transfers-controller #f flags #f #f)))
+  (lambda () (tcp-transfers-controller flags #f #f)))
 
 
 (define (pass-to-another-state new-state-function
@@ -303,7 +277,7 @@
 	 
 	 ;; TODO inline simple-receiver ? or could it end up being used by udp?
 
-	 (simple-receiver (+ ip-header-length (get-tcp-header-length)))))
+	 (simple-receiver (+ ip-header-length tcp-header-length))))
     (if in-amount
         (begin (increment-curr-conn-info! tcp-peer-seqnum 4 in-amount)
                in-amount)
@@ -358,19 +332,15 @@
   (let ((data-length (output?)))
     (cond ((retransmission-needed?)
 	   (conn-info-ref curr-conn tcp-self-ack-units))
-          (data-length
-	   (min data-length (conn-info-ref curr-conn tcp-peer-mss)))
-          (else #f))))
+          (else data-length))))
 
 
-(define (tcp-transfers-controller options ;; TODO this is disgusting, it's called with booleans and there's no way to see what's going on without jumping to the definition
-                                   flags
-                                   receiver-on?
-                                   transmitter-on? )
+;; TODO this is disgusting, it's called with booleans and there's no way to see what's going on without jumping to the definition
+(define (tcp-transfers-controller flags
+				  receiver-on?
+				  transmitter-on?)
   (u8vector-set! pkt tcp-flags flags)
   (if (and receiver-on? (tcp-receiver)) (turn-tcp-flag-on ACK))
-  (set! tcp-options-length (if options (u8vector-length options) 0))
-  (u8vector-copy! options 0 pkt tcp-options tcp-options-length) ; set options
   (let ((out-amount (if transmitter-on? (tcp-transmitter) 0)))
     (if (> (if out-amount out-amount 0) 0) ;; TODO ugly, but tcp-transmitter can give #f, maybe replace with (and out-amount (> out-amount 0)) can tcp-transmitter return 0 ifnot, can be even simpler
 	(turn-tcp-flag-on PSH))
@@ -417,16 +387,15 @@
 
 ;; output
 (define (tcp-encapsulation amount)
-  (let ((len (+ 20 tcp-options-length (if amount amount 0))))
+  (let ((len (+ tcp-header-length (if amount amount 0))))
     (integer->pkt 0 tcp-urgent-data-pointer 2)
     (integer->pkt 0 tcp-checksum 2)
-    (integer->pkt (buf-free-space (vector-ref curr-conn conn-input)) tcp-window 2)
-    (u8vector-set! pkt ; set the header length
-		   tcp-header-length
-		   ;; the length (in bytes) converted to 32-bit words and
-		   ;; shifted 4 bits to the left
-		   ;; which gives : (* (quotient header-length 4) 16)
-		   (* (+ tcp-options-length 20) 4)) ;; TODO if we get rid of options, have static
+    (integer->pkt (buf-free-space (vector-ref curr-conn conn-input))
+		  tcp-window 2)
+    ;; the header length (in bytes) converted to 32-bit words and shifted 4
+    ;; bits to the left (4 reserved bits must be set to 0) which gives :
+    ;; (* (quotient tcp-header-length 4) 16)
+    (u8vector-set! pkt tcp-header-length-offset 80)
     (copy-curr-conn-info->pkt tcp-acknum tcp-peer-seqnum 4)
     (copy-curr-conn-info->pkt tcp-seqnum tcp-self-seqnum 4)
     (copy-curr-conn-info->pkt tcp-destination-portnum conn-peer-portnum 2)

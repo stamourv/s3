@@ -8,8 +8,6 @@
 
 ;; TODO should we keep the current packet's length somewhere ?
 
-;; TODO options are not supported as of now
-(define tcp-options-length 0) ;; TODO are TCP options supported ?
 (define data-length 0) ;; TODO any way to pass around instead ?
 
 
@@ -51,8 +49,6 @@
 (define ip-options                   34) ; not supported as of now
 (define ip-header-length 20)
 
-;; TODO everything after ip would have to be functions (because of options that change), instead, let's try to have functions like ip-data-ref, tcp-data-ref, etc that add the offset for us. that is, when weadd options
-
 ;; ICMP
 (define icmp-header   34)
 (define icmp-type     34)
@@ -63,19 +59,20 @@
 (define icmp-header-length 8) ;; TODO do the same for other protocols ?
 
 ;; TCP
-(define tcp-header              34)
-(define tcp-source-portnum      34)
-(define tcp-destination-portnum 36)
-(define tcp-seqnum              38) ; TODO change name ?
-(define tcp-acknum              42) ; TODO change name ?
-(define tcp-header-length       46)
-(define tcp-flags               47)
-(define tcp-window              48)
-(define tcp-checksum            50)
-(define tcp-urgent-data-pointer 52)
-(define tcp-options             54) ;; TODO do we support options ? looking at these offsets, looks like we don't
-(define tcp-data                54)
-;; TODO watch out if we want to store the length, not to have the same var name as above
+(define tcp-header               34)
+(define tcp-source-portnum       34)
+(define tcp-destination-portnum  36)
+(define tcp-seqnum               38) ; TODO change name ?
+(define tcp-acknum               42) ; TODO change name ?
+(define tcp-header-length-offset 46)
+(define tcp-flags                47)
+(define tcp-window               48)
+(define tcp-checksum             50)
+(define tcp-urgent-data-pointer  52)
+(define tcp-options              54)
+(define tcp-data                 54)
+(define tcp-header-length        20)
+
 
 ;; UDP
 (define udp-header              34)

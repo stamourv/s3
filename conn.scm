@@ -22,7 +22,6 @@
 ;;     - number of self-ack units TODO what's that ?
 ;;     - the acknoledgement number at which our peer is
 ;;     - number of attemps so far TODO make sure it's so far
-;;     - peer's Maximum Size Segment (MSS)
 ;;     Note : storing our port number in the connection structure is unecessary
 ;; -1: timestamp (integer) TODO which unit ?
 ;; -2: input buffer (u8vector)
@@ -50,8 +49,7 @@
 (define tcp-self-ack-units 21) ;; TODO what's that ?
 (define tcp-peer-seqnum    22) ;; TODO add conn- before ?
 (define tcp-attempts-count 26)
-(define tcp-peer-mss       27)
-(define tcp-infos-size     28)
+(define tcp-infos-size     27)
 
 
 ;; connection state
@@ -113,8 +111,7 @@
   (copy-pkt->curr-conn-info ethernet-source-mac conn-peer-mac 6) ;; TODO do we need this ? we can simply answer to the sender
   (set-timestamp!)
   (u8vector-copy! (tcp-isn) 0 pkt tcp-self-seqnum 4)
-  (copy-pkt->curr-conn-info tcp-seqnum tcp-peer-seqnum 4)
-  (get-peer-mss tcp-options))
+  (copy-pkt->curr-conn-info tcp-seqnum tcp-peer-seqnum 4))
 
 
 ;; an input/output buffers is represented as a vector
