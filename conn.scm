@@ -28,16 +28,11 @@
 ;; -3: output buffer (u8vector)
 ;; -4: state function (function)
 ;;     defines the connection's behaviour at a given time.
-;; -5: lock
-;;      a simple mutex (with Peterson's algorithm) that makes sure that the
-;;      application does not access its data while the stack is modifying it
-;; TODO add retries for the stack if the application holds a connection, or simply drop the packet ? can't happen in a single threaded application
 (define conn-info           0)
 (define conn-timestamp      1)
 (define conn-input          2)
 (define conn-output         3)
 (define conn-state-function 4) ;; TODO if we get rid of the state atom, rename this conn-state
-(define conn-lock           5)
 
 ;; informations
 (define conn-self-ip       0)
@@ -66,30 +61,6 @@
 (define (set-timestamp!) (vector-set! curr-conn conn-timestamp (get-current-time))) ;; TODO add curr to name ?
 (define (get-curr-elapsed-time) (get-elapsed-time (vector-ref curr-conn conn-timestamp)))
 
-;; a lock is represented as a vector, 1st element is #t if the stack wants to
-;; access the connection, the 2nd is #t if the application wants to, the 3rd
-;; is #t if the priority is to the application (see Peterson's algorithm)
-(define (stack-lock-conn)
-  ;; the stack can only lock and unlock the current connection
-  (let ((lock ((vector-ref curr-conn conn-lock))))
-    (vector-set! lock 0 #t)
-    (vector-set! lock 2 #t)
-    (if (and (vector-ref lock 1) (vector-ref lock 2))
-	;; we can't lock the connection
-	(begin (vector-set! lock 0 #f) (vector-set! lock 2 #t) #f)
-	#t)))
-;; returns #f if we can't lock, so we can drop the packet instead of waiting
-(define (stack-release-conn) (vector-set! (vector-ref curr-conn conn-lock) 0 #f))
-(define (app-lock-conn conn)
-  (let ((lock (vector-ref conn conn-lock)))
-    (vector-set! lock 1 #t)
-    (vector-set! lock 2 #f)
-    (if (and (vector-ref lock 0) (not (vector-ref lock 2)))
-	;; we can't lock the connection
-	(begin (vector-set! lock 1 #f) (vector-set! lock 2 #f) #f)
-	#t)))
-(define (app-release-conn conn) (vector-set! (vector-ref conn conn-lock) 1 #f))
-
 (define (=conn-info-pkt? pkt-idx c c-idx n)
   (u8vector-equal-field? pkt pkt-idx (vector-ref c conn-info) c-idx n))
 
@@ -102,8 +73,7 @@
 			  #f
 			  (vector 0 0 (make-u8vector tcp-input-size 0))
 			  (vector 0 0 (make-u8vector tcp-output-size 0))
-			  tcp-syn-recv
-			  (vector #f #f #f)))
+			  tcp-syn-recv))
   (add-conn-to-curr-port curr-conn) ;; TODO is it always the curr-conn ? if so, simplify
   (copy-pkt->curr-conn-info ip-destination-ip conn-self-ip 4) ;; TODO useful ?
   (copy-pkt->curr-conn-info tcp-source-portnum conn-peer-portnum 2)
@@ -222,57 +192,39 @@
 ;; read n input bytes from the connection c, if n is omitted, read all
 ;; TODO the changes were not tested
 (define (tcp-read c . n) ;; TODO quite ugly
-  (if (and (app-lock-conn c)
-           (<= (conn-info-ref c conn-state) CLOSED)) ;; active or closed
+  (if (<= (conn-info-ref c conn-state) CLOSED) ;; active or closed
       (let* ((buf (vector-ref c conn-input))
 	     (available (vector-ref buf 0)) ; amount of data in the buffer
 	     (amount (if (null? n)
 			 available
-			 (min available (car n))))
-	     (out (cond ((> amount 0)
-			 (let ((data (make-u8vector amount 0)) (i 0))
-			   (copy-buffer->u8vector! buf data 0 amount)
-			   data)) ; TODO change one of the 2 pointers
-			((= (conn-info-ref c conn-state) CLOSED) 'end-of-input) ;; TODO we check the state twice, cache ?
-			(else #f))))
-	(app-release-conn c)
-	out)
+			 (min available (car n)))))
+	(cond ((> amount 0)
+	       (let ((data (make-u8vector amount 0)) (i 0))
+		 (copy-buffer->u8vector! buf data 0 amount)
+		 data)) ; TODO change one of the 2 pointers
+	      ((= (conn-info-ref c conn-state) CLOSED) 'end-of-input) ;; TODO we check the state twice, cache ?
+	      (else #f)))
       #f))
 
 ;; write bytes (in a u8vector) to c, returns the number of bytes written
 (define (tcp-write c data)
-  (if (and (app-lock-conn c)
-           (= (conn-info-ref c conn-state) ACTIVE))
+  (if (= (conn-info-ref c conn-state) ACTIVE)
       (let* ((buf (vector-ref c conn-output))
-	     (amount (min (buf-free-space buf) (u8vector-length data)))
-	     (out (if (> amount 0)
-		      (begin ;; TODO change one of the 2 pointers, once we have them
-			(copy-u8vector->buffer! data 0 buf amount)
-			amount)
-		      #f))) ;; TODO distinguish from the #f from a failed lock, or do we really need to ? since in both cases, we'd have to retry the write (except if the connection is closed, how to know ?)
-	(app-release-conn c)
-	out)
+	     (amount (min (buf-free-space buf) (u8vector-length data))))
+	(if (> amount 0)
+	    (begin ;; TODO change one of the 2 pointers, once we have them
+	      (copy-u8vector->buffer! data 0 buf amount)
+	      amount)
+	    #f))
       #f))
 
 
 ;; API function to terminate a connection
-(define (tcp-close conn . abort?) (if abort? (abort-conn c) (close-conn c)))
-
-                                        ;ask the protocol to close the connection
-                                        ;(set the "conn-state" subfield to "CLOSED")
-(define (close-conn c)
-  (if (and (app-lock-conn c)
-           (= (conn-info-ref c conn-state) ACTIVE))
-      (begin (conn-info-set! c conn-state CLOSED)
-	     (app-release-conn c)
-	     #t)
-      #f)) ;; TODO do we tell our peer that we closed ? if so, when, do we wait for him to send us a packet and we respond with that ? we'll have to check this, also, when is it dropped from the port structure ?
-
-
-                                        ;ask the protocol to abort the connection
-                                        ;(set the "conn-state" subfield to "ABORT")
-(define (abort-conn c)
-  (if (and (app-lock-conn c)
-           (<= (conn-info-ref c conn-state) CLOSED))
-      (begin (conn-info-set! c conn-state ABORTED) (app-release-conn c) #t)
-      #f)) ;; TODO without the lock, this would be useless
+(define (tcp-close conn . abort?)
+  (if abort?
+      (if (<= (conn-info-ref c conn-state) CLOSED) ;; TODO abstract these ? maybe get rid of these weird states
+	  (begin (conn-info-set! c conn-state ABORTED) #t)
+      #f)
+      (if (= (conn-info-ref c conn-state) ACTIVE)
+	  (begin (conn-info-set! c conn-state CLOSED) #t) ;; TODO do we tell our peer that we closed ? if so, when, do we wait for him to send us a packet and we respond with that ? we'll have to check this, also, when is it dropped from the port structure ?
+	  #f)))

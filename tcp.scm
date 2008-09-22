@@ -47,7 +47,9 @@
 			     ;; the handshake must begin with a SYN
 			     (exclusive-tcp-flag? SYN))
 			(begin (new-conn) ; this sets the new connection as the current one
-			       (pass-to-another-state tcp-syn-recv #t #f #t)
+			       (self-acknowledgement) ;; TODO was in the call to transferts controller, but does it make any sense ?
+			       (increment-curr-conn-info! tcp-peer-seqnum 4 1) ;; TODO 1, really ?
+			       (pass-to-another-state tcp-syn-recv)
 			       (tcp-transfers-controller (+ SYN ACK) #f #f))))))
 	    (icmp-unreachable icmp-port-unreachable)))))
 
@@ -72,19 +74,16 @@
 
 ;; tcp state time-wait
 (define (tcp-time-wait)
-  (tcp-state-function
-   (lambda () #t)
-   (lambda () (if (> (get-curr-elapsed-time) tcp-time-to-wait)
-		  (tcp-end)))))
+  (tcp-state-function (lambda () #t)))
 
 ;; tcp state fin-wait-2
 (define (tcp-fin-wait-2)
   (tcp-state-function
    (lambda () (if (inclusive-tcp-flag? FIN)
-		  (begin (pass-to-another-state tcp-time-wait #f #f #t)
+		  (begin (increment-curr-conn-info! tcp-peer-seqnum 4 1) ;; TODO 1, really ?
+			 (pass-to-another-state tcp-time-wait)
 			 (tcp-transfers-controller ACK #t #f))
-		  (tcp-transfers-controller 0 #t #f)))
-   (make-closed-inspection 0))) ;; TODO what's that, inline ?
+		  (tcp-transfers-controller 0 #t #f)))))
 
 
 ;; tcp state closing
@@ -92,25 +91,30 @@
   (tcp-state-function
    (lambda () (if (and (inclusive-tcp-flag? ACK)
 		       (valid-acknum?))
-		  (begin (pass-to-another-state tcp-time-wait #f #t #f)
-			 (tcp-transfers-controller ACK #f #f))))
-   (make-closed-inspection FIN)))
+		  (begin (conn-info-set! curr-conn tcp-self-ack-units 1) ;; TODO 1, really ?
+			 (pass-to-another-state tcp-time-wait)
+			 (tcp-transfers-controller ACK #f #f))))))
 
 
 ;; tcp state fin-wait-1
 (define (tcp-fin-wait-1)
   (tcp-state-function
-   (lambda () (if (inclusive-tcp-flag? FIN)
-		  (begin (if (and (inclusive-tcp-flag? ACK)
-				  (valid-acknum?))
-			     (pass-to-another-state tcp-time-wait #f #t #t)
-			     (pass-to-another-state tcp-closing #f #f #t))
-			 (tcp-transfers-controller ACK #t #f))
-		  (begin (if (and (inclusive-tcp-flag? ACK)
-				  (valid-acknum?))
-			     (pass-to-another-state tcp-fin-wait-2 #f #t #f))
-			 (tcp-transfers-controller 0 #t #f))))
-   (make-closed-inspection FIN)))
+   (lambda ()
+     (if (inclusive-tcp-flag? FIN)
+	 (begin
+	   (if (and (inclusive-tcp-flag? ACK)
+		    (valid-acknum?))
+	       (begin (conn-info-set! curr-conn tcp-self-ack-units 1) ;; TODO 1, really ?
+		      (increment-curr-conn-info! tcp-peer-seqnum 4 1) ;; TODO 1, really ?
+		      (pass-to-another-state tcp-time-wait))
+	       (begin (increment-curr-conn-info! tcp-peer-seqnum 4 1) ;; TODO 1, really ?
+		      (pass-to-another-state tcp-closing)))
+	   (tcp-transfers-controller ACK #t #f)) ;; TODO make sure this does what we want
+	 (begin (if (and (inclusive-tcp-flag? ACK)
+			 (valid-acknum?))
+		    (begin (conn-info-set! curr-conn tcp-self-ack-units 1) ;; TODO 1, really ?
+			   (pass-to-another-state tcp-fin-wait-2)))
+		(tcp-transfers-controller 0 #t #f))))))
 
 
 ;; tcp state last-ack
@@ -118,8 +122,7 @@
   (tcp-state-function
    (lambda () (if (and (inclusive-tcp-flag? ACK)
 		       (valid-acknum?))
-		  (tcp-end)))
-   (make-closed-inspection FIN)))
+		  (tcp-end)))))
 
 
 ;; tcp state close-wait
@@ -128,8 +131,7 @@
    (lambda ()
      (if (and (inclusive-tcp-flag? ACK) (valid-acknum?))
 	 (self-acknowledgement))
-     (tcp-transfers-controller 0 #f #t)) ;; TODO make sure it's right
-   (make-opened-inspection 0 #t tcp-last-ack #f #f)))
+     (tcp-transfers-controller 0 #f #t))))
 
 
 ;; tcp state established
@@ -142,10 +144,11 @@
 	 (buf-consume (vector-ref curr-conn conn-output)
 		      (self-acknowledgement)))
      (if (inclusive-tcp-flag? FIN)
-	 (begin (pass-to-another-state tcp-close-wait #f #t #t)
+	 (begin (conn-info-set! curr-conn tcp-self-ack-units 1) ;; TODO 1, really ?
+		(increment-curr-conn-info! tcp-peer-seqnum 4 1) ;; TODO 1, really ?
+		(pass-to-another-state tcp-close-wait)
 		(tcp-transfers-controller ACK #t #t))
-	 (tcp-transfers-controller 0 #t #t)))
-   (make-opened-inspection 0 #t tcp-fin-wait-1 #f #f)))
+	 (tcp-transfers-controller 0 #t #t)))))
 
 ;; tcp state syn-received
 (define (tcp-syn-recv)
@@ -154,9 +157,9 @@
 		     (tcp-abort))
 		    ((and (inclusive-tcp-flag? ACK) (valid-acknum?))
 		     (link-to-app)
-		     (pass-to-another-state tcp-established #f #t #f)
-		     (tcp-transfers-controller 0 #t #t))))
-   (make-opened-inspection (+ SYN ACK) #f tcp-fin-wait-1 #t #f)))
+		     (conn-info-set! curr-conn tcp-self-ack-units 1) ;; TODO 1, really ?
+		     (pass-to-another-state tcp-established)
+		     (tcp-transfers-controller 0 #t #t))))))
 
 
 ;; Tools for TCP state functions
@@ -179,148 +182,78 @@
   (detach-curr-conn))
 ;; close the connection, it has ended properly
 (define (tcp-end)
-  (pass-to-another-state (lambda () #f) #f #f #f)
+  (pass-to-another-state (lambda () #f))
   (conn-info-set! curr-conn conn-state END)
   (detach-curr-conn))
 
 
-(define (tcp-state-function tcp-reception-phase2 inspection)
+(define (tcp-state-function phase2)
   (if (or (> (get-curr-elapsed-time) tcp-max-life-time) ; did the connection time out ?
 	  ;; were there too many retransmission attempts for this packet
 	  ;; already ?
           (> (conn-info-ref curr-conn tcp-attempts-count) tcp-attempts-limit)
           (= (conn-info-ref curr-conn conn-state) ABORTED)) ;; TODO if our peer closes or aborts, is the connection dropped from the list ? if so, it stays alive only as long as the application needs it
       (tcp-abort)
-      (if (stack-lock-conn)
-	  
-	  (let ((out ;; TODO yuck
-		 (if (not (inclusive-tcp-flag? SYN))
-		     (cond ((not (=conn-info-pkt? tcp-seqnum curr-conn
-						  tcp-peer-seqnum 4))
-			    ;; seqnum is valid, do transfers
-			    (tcp-transfers-controller ACK #f #f)) ; TODO ok, so we send an ack saying what ? looks like we didn't get the data we were waiting for, why do we ack, shouldn't we simply discard it ?
-			   ((inclusive-tcp-flag? RST)
-			    (tcp-abort)) ; TODO clean up, was simply inlined
-			   (else (tcp-reception-phase2))))))
-	    (stack-release-conn)
-	    out)  ;; TODO release here ? or does the connection have a change of not existing anymore ?
-	  
-	  (inspection)))) ;; TODO wtf, using the other lock caused a problem in the tests, but got rid of the incriminating lock changes, without being able to figure out why they were there in the first place
+      (if (not (inclusive-tcp-flag? SYN)) ;; TODO do anything if it's a syn ?
+	  (cond ((not (=conn-info-pkt? tcp-seqnum curr-conn
+				       tcp-peer-seqnum 4))
+		 ;; we have received data (the peer's seqnum is ahead), ACK it TODO is that really it ? make sure wih the standard, perhaps this means we received data that is too far ahead, and we should wait for what comes before ?
+		 (tcp-transfers-controller ACK #f #f))
+		((inclusive-tcp-flag? RST)
+		 (tcp-abort))
+		(else (phase2))))))
 
 
-(define (make-opened-inspection flags
-                                transmitter-on?
-                                close-function
-                                special-flag-to-ack?
-                                peer-ack?)
-  (lambda ()
-    (if (and (= (conn-info-ref curr-conn conn-state) CLOSED)
-             (not (output?))) ;; TODO why output? and not tcp-output? ?
-        (begin (pass-to-another-state close-function
-                                      #t
-                                      special-flag-to-ack?
-                                      peer-ack?)
-               (tcp-transfers-controller FIN #f #f))
-        (begin  (tcp-transfers-controller flags
-					  #f
-					  transmitter-on?)))))
-
-                                        ;Is there data in the output buffer of the current connection?
-(define (output?)
-  (let ((amount (curr-buf-get-amount)))
-    (if (> amount 0) amount #f)))
-
-(define (make-closed-inspection flags)
-  (lambda () (tcp-transfers-controller flags #f #f)))
-
-
-(define (pass-to-another-state new-state-function
-                               special-flag-to-send?
-                               special-flag-to-ack?
-                               peer-ack?)
+(define (pass-to-another-state new-state-function)
   (vector-set! curr-conn conn-state-function new-state-function)
   (conn-info-set! curr-conn tcp-attempts-count 0)
-  (if special-flag-to-ack? (self-acknowledgement))
-  (if special-flag-to-send? (conn-info-set! curr-conn tcp-self-ack-units 1)) ;; TODO 1, really ?
-  (if peer-ack? (increment-curr-conn-info! tcp-peer-seqnum 4 1)) ;; TODO 1, really ?
-  (set-timestamp!))
-
-
-(define (tcp-receiver) ;; TODO used only once
-  (let ((in-amount
-	 
-	 ;; TODO inline simple-receiver ? or could it end up being used by udp?
-
-	 (simple-receiver (+ ip-header-length tcp-header-length))))
-    (if in-amount
-        (begin (increment-curr-conn-info! tcp-peer-seqnum 4 in-amount)
-               in-amount)
-        #f)))
-
-(define (input? headers-len) ;; TODO could this conceivably be used elsewhere ?
-  ;; returns the amount of input data in the packet, or false if none
-  (let ((in-amount (- (pkt-ref-2 ip-length) headers-len)))
-    (if (> in-amount 0) in-amount #f))) ;; TODO used once (in the previous function) try to inline ? was originally an internal define of simple-receiver, which was inlined in tcp-receiver (actually, not yet inlined)
-
-;if there is input and if there is enough place for it, stores it,
-;otherwise, returns #f 
-(define (simple-receiver headers-size) ;; TODO used only once, in the previous function, but maybe use it for tcp ?
-  (let ((in-amount (input? headers-size)))
-    (if in-amount 
-	(begin (input-has-succeeded? in-amount tcp-data)
-	       (set-timestamp!)
-	       in-amount)
-	#f)))
-
-;Is there enough of free space in the input buffer? 
-;Yes : we transmit input datas and return the number of bytes.
-;No : returns #f
-(define (input-has-succeeded? in-amount pkt-idx)
-  (if (<= in-amount (buf-free-space (vector-ref curr-conn conn-input))) ;; TODO maybe put as much as we can and only ack that ? or would it be too complex ?
-      (begin (copy-u8vector->buffer! pkt ; copy data to connection input buffer
-				     pkt-idx
-				     (vector-ref curr-conn conn-input)
-				     in-amount)
-	     (buf-inc-amount (vector-ref curr-conn conn-input) in-amount) 
-	     in-amount)
-      #f))
-
-
-(define (tcp-transmitter)
-  (let ((out-amount (tcp-output?))) ;; TODO only use of tcp-output?
-    (if out-amount
-        (begin
-	  (copy-buffer->u8vector! (vector-ref curr-conn conn-output)
-				  pkt ; copy data to connection output buffer
-				  tcp-data
-				  out-amount)
-	  ;; TODO last line was in simple-transmitter, but since it was only used once, it ended up inlined, the clearing part was removed since it was always passed #f (actually the old udp did pass #t, but it's gone anyways)
-          (increment-curr-conn-info! tcp-attempts-count 1 1)
-          (conn-info-set! curr-conn tcp-self-ack-units out-amount)))
-    out-amount))
-;; TODO when do we get rid of output data if we received the ack ?
-
-;; may not be used in states consuming special ack units
-;; (SYN flag or FIN flag)
-(define (tcp-output?) ;; TODO only used once, maybe inline ? actually, is passed as parameter to simple-transmitter, but is the only parameter ever
-  (let ((data-length (output?)))
-    (cond ((retransmission-needed?)
-	   (conn-info-ref curr-conn tcp-self-ack-units))
-          (else data-length))))
+  (set-timestamp!)) ;; TODO now we have some repetition, all the 3 flags that were tested here and which called some functions, well, these functions are now called before this, all in the same way.
 
 
 ;; TODO this is disgusting, it's called with booleans and there's no way to see what's going on without jumping to the definition
+;; TODO maybe use symbols to say what operations we will be making, keywords would be nice
 (define (tcp-transfers-controller flags
 				  receiver-on?
 				  transmitter-on?)
   (u8vector-set! pkt tcp-flags flags)
-  (if (and receiver-on? (tcp-receiver)) (turn-tcp-flag-on ACK))
-  (let ((out-amount (if transmitter-on? (tcp-transmitter) 0)))
-    (if (> (if out-amount out-amount 0) 0) ;; TODO ugly, but tcp-transmitter can give #f, maybe replace with (and out-amount (> out-amount 0)) can tcp-transmitter return 0 ifnot, can be even simpler
-	(turn-tcp-flag-on PSH))
-    (if (> (u8vector-ref pkt tcp-flags) 0)
+  ;; input
+  (let ((in-amount (- (pkt-ref-2 ip-length) 40))) ; 40 is the sum of the IP and TCP header lengths TODO have in a var, or make picobit optimize these arithmetic operations
+    (if (and receiver-on?
+	     (> in-amount 0))      
+	(begin (set-timestamp!)
+	       (if (<= in-amount ;; TODO was restructured, the original didn't care whether input succeeded or not and just acnowledged without checking
+		       (buf-free-space (vector-ref curr-conn conn-input)))
+		   (begin
+		     ;; copy data to connection input buffer
+		     (copy-u8vector->buffer! pkt
+					     tcp-data
+					     (vector-ref curr-conn conn-input)
+					     in-amount)
+		     (buf-inc-amount (vector-ref curr-conn conn-input)
+				     in-amount) 
+		     (increment-curr-conn-info! tcp-peer-seqnum 4 in-amount)
+		     (turn-tcp-flag-on ACK))))))
+  ;; output
+  (let ((out-amount
+	 (if (and (> (conn-info-ref curr-conn tcp-self-ack-units) 0)
+		  (>= (get-curr-elapsed-time) tcp-retransmission-delay))
+	     ;; a retransmission is needed
+	     (conn-info-ref curr-conn tcp-self-ack-units)
+	     (curr-buf-get-amount))))    
+    (if (and transmitter-on?
+	     (> out-amount 0))
+	(begin
+	  ;; copy data to connection output buffer
+	  (copy-buffer->u8vector! (vector-ref curr-conn conn-output)
+				  pkt
+				  tcp-data
+				  out-amount)
+	  (increment-curr-conn-info! tcp-attempts-count 1 1)
+	  (conn-info-set! curr-conn tcp-self-ack-units out-amount)
+	  (turn-tcp-flag-on PSH)))
+    (if (> (u8vector-ref pkt tcp-flags) 0) ;; TODO flags were passed, and maybe psh was set, so maybe we can tell without a ref
         (begin
-          (if (> flags 0) (increment-curr-conn-info! tcp-attempts-count 1 1))
+          (if (> flags 0) (increment-curr-conn-info! tcp-attempts-count 1 1)) ;; TODO what ? understand the rationale behind this
           (set-timestamp!)
           (tcp-encapsulation out-amount)))))
 
@@ -339,16 +272,10 @@
 					tcp-self-seqnum
 					4)))
     (u8vector-increment! new-acknum 0 4 (conn-info-ref curr-conn tcp-self-ack-units))
-    ;; TODO find out what these self-ack-units are
     (u8vector-equal-field? pkt tcp-acknum new-acknum 0 4)))
 
 (define (turn-tcp-flag-on flag)
   (u8vector-set! pkt tcp-flags (bitwise-ior flag (u8vector-ref pkt tcp-flags))))
-
-
-(define (retransmission-needed?)
-  (and (> (conn-info-ref curr-conn tcp-self-ack-units) 0) ; TODO ok, looks like the self-ack stuff is the number of bytes we have sent that were not confirmed yet by the receiver
-       (>= (get-curr-elapsed-time) tcp-retransmission-delay)))
 
 
 (define (self-acknowledgement) ;; TODO what's that ? that's data that was sent but not acknowledged yet
