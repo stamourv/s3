@@ -13,16 +13,16 @@
 (network-init)
 (receive-packet-to-u8vector pkt)
 
-(define (print-vector v i)
-  (if (< i (u8vector-length v))
-      (begin (display (u8vector-ref v i))
-	     (display "-")
-	     (print-vector v (+ i 1)))))
+;; (define (print-vector v i)
+;;   (if (< i (u8vector-length v))
+;;       (begin (display (u8vector-ref v i))
+;; 	     (display "-")
+;; 	     (print-vector v (+ i 1)))))
 ; (print-vector pkt 0)
 
 (process-packet)
 
-(print-vector pkt 0)
+;; (print-vector pkt 0)
 
 (network-cleanup)
 

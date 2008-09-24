@@ -77,7 +77,7 @@
   (tcp-state-function (lambda () #t)))
 
 ;; tcp state fin-wait-2
-(define (tcp-fin-wait-2)
+(define (tcp-fin-wait-2) ;; TODO most of the thunks sent to tcp-state-function are a test (usually for a flag, maybe more) and 1-2 thunks, maybe there is a way to optimize ? however, sometimes, there are actions after the if, or more than one if
   (tcp-state-function
    (lambda () (if (inclusive-tcp-flag? FIN)
 		  (begin (increment-curr-conn-info! tcp-peer-seqnum 4 1) ;; TODO 1, really ?
@@ -219,7 +219,7 @@
   ;; input
   (let ((in-amount (- (pkt-ref-2 ip-length) 40))) ; 40 is the sum of the IP and TCP header lengths TODO have in a var, or make picobit optimize these arithmetic operations
     (if (and receiver-on?
-	     (> in-amount 0))      
+	     (> in-amount 0))
 	(begin (set-timestamp!)
 	       (if (<= in-amount ;; TODO was restructured, the original didn't care whether input succeeded or not and just acnowledged without checking
 		       (buf-free-space (vector-ref curr-conn conn-input)))
