@@ -8,8 +8,6 @@
 
 ;; TODO should we keep the current packet's length somewhere ?
 
-(define data-length 0) ;; TODO any way to pass around instead ?
-
 
 ;; packet offsets
 

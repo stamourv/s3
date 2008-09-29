@@ -12,6 +12,7 @@ now 5652, 5641, 5626, 5602, 5570, 5442, 5424, 5413, 5414, 5401, 5395, 5370, 5354
 4086 after realising all the inspection function could never be used without a lock failure, and locks were removed since they are useless in a single-thread environment
 4067, 4047, 4037, 4024, 4015, 3997, 3977, 3962
 3560, removed print-packet from picobit-compatibility, which removed dependency to display
+3549, 3536, 3498
 
 
 figure out dependencies for each module
@@ -51,3 +52,7 @@ get-ip-header-len -- has to do with options, let's choke on then and have this c
 
 
 FIX THE FILES TO LOAD PROBLEM, ALWAYS HAVE TO CHANGE THE PATH
+
+for timeouts, should the stack check by itself, or should it be done only when the user asks to do something with the connection ?
+
+CHECK ALL THE STATE FUNCTIONS TO SEE IF TCP IS RESPECTED, sometimes I have doubts

@@ -34,7 +34,6 @@
 ;; TODO we have a problem if we start the stack before we get any packets, since we process empty packets
 (define (process-packet)
   (debug "process-packet\n")
-  (set! data-length 0)
   (eth-pkt-in) ; the response is sent somewhere within
   (set! curr-port #f)
   (set! curr-conn #f))

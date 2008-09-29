@@ -17,7 +17,7 @@
 ;;     - peer's IP address
 ;;     - peer's source port number
 ;;     - peer's MAC address
-;;     - connection state TODO useful ?
+;;     - whether the connection is active or not
 ;;     - the acknoledgement number at which the stack is for this connection
 ;;     - number of self-ack units TODO what's that ?
 ;;     - the acknoledgement number at which our peer is
@@ -32,26 +32,19 @@
 (define conn-timestamp      1)
 (define conn-input          2)
 (define conn-output         3)
-(define conn-state-function 4) ;; TODO if we get rid of the state atom, rename this conn-state
+(define conn-state-function 4)
 
 ;; informations
 (define conn-self-ip       0)
 (define conn-peer-ip       4) ;; TODO see if it's necessary or if a simple swap can do the job
 (define conn-peer-portnum  8) ;; TODO same here
 (define conn-peer-mac      10) ;; TODO same here
-(define conn-state         16) ;; TODO useful ? if not, remove and shift all the others
+(define conn-active?       16) ; boolean ;: TODO find a way to do without
 (define tcp-self-seqnum    17) ;; TODO were calculated, but these were the only infos after state anyway
 (define tcp-self-ack-units 21) ;; TODO what's that ?
 (define tcp-peer-seqnum    22) ;; TODO add conn- before ?
 (define tcp-attempts-count 26)
 (define tcp-infos-size     27)
-
-
-;; connection state
-(define ACTIVE  0) ;; TODO how is this used ? don't state functions take care of this ? see if we can drop
-(define CLOSED  1)
-(define ABORTED 2)
-(define END     3)
 
 
 ;; general operations
@@ -192,23 +185,24 @@
 ;; read n input bytes from the connection c, if n is omitted, read all
 ;; TODO the changes were not tested
 (define (tcp-read c . n) ;; TODO quite ugly
-  (if (<= (conn-info-ref c conn-state) CLOSED) ;; active or closed
-      (let* ((buf (vector-ref c conn-input))
-	     (available (vector-ref buf 0)) ; amount of data in the buffer
-	     (amount (if (null? n)
-			 available
-			 (min available (car n)))))
-	(cond ((> amount 0)
-	       (let ((data (make-u8vector amount 0)) (i 0))
-		 (copy-buffer->u8vector! buf data 0 amount)
-		 data)) ; TODO change one of the 2 pointers
-	      ((= (conn-info-ref c conn-state) CLOSED) 'end-of-input) ;; TODO we check the state twice, cache ?
-	      (else #f)))
-      #f))
+  (set! curr-conn c)
+  ;; TODO visit the connection ? maybe not needed, we have received data, and there is nothing to de really
+  (let* ((buf (vector-ref c conn-input))
+	 (available (vector-ref buf 0)) ; amount of data in the buffer
+	 (amount (if (null? n)
+		     available
+		     (min available (car n)))))
+    (cond ((> amount 0)
+	   (let ((data (make-u8vector amount 0)) (i 0))
+	     (copy-buffer->u8vector! buf data 0 amount)
+	     data)) ; TODO change one of the 2 pointers
+	  ((not (conn-info-ref c conn-active?)) 'end-of-input)
+	  (else #f))))
 
 ;; write bytes (in a u8vector) to c, returns the number of bytes written
 (define (tcp-write c data)
-  (if (= (conn-info-ref c conn-state) ACTIVE)
+  (set! curr-conn c)
+  (if (conn-info-ref c conn-active?)
       (let* ((buf (vector-ref c conn-output))
 	     (amount (min (buf-free-space buf) (u8vector-length data))))
 	(if (> amount 0)
@@ -216,15 +210,12 @@
 	      (copy-u8vector->buffer! data 0 buf amount)
 	      amount)
 	    #f))
-      #f))
+      'connection-closed)) ; error, we try to write to a closed connection 
+;; TODO after that, visit the connection
 
 
 ;; API function to terminate a connection
 (define (tcp-close conn . abort?)
-  (if abort?
-      (if (<= (conn-info-ref c conn-state) CLOSED) ;; TODO abstract these ? maybe get rid of these weird states
-	  (begin (conn-info-set! c conn-state ABORTED) #t)
-      #f)
-      (if (= (conn-info-ref c conn-state) ACTIVE)
-	  (begin (conn-info-set! c conn-state CLOSED) #t) ;; TODO do we tell our peer that we closed ? if so, when, do we wait for him to send us a packet and we respond with that ? we'll have to check this, also, when is it dropped from the port structure ?
-	  #f)))
+  (set! curr-conn conn)
+  (conn-info-set! conn conn-active? #f)
+  (if abort? (tcp-abort) (detach-curr-conn)))
