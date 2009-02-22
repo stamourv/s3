@@ -47,9 +47,6 @@ change udp-encapsulation to udp-write
 
 bug with ip checksum check, see on laptop, discovered during tests
 
-kill list
-get-ip-header-len -- has to do with options, let's choke on then and have this constant at 20
-
 
 FIX THE FILES TO LOAD PROBLEM, ALWAYS HAVE TO CHANGE THE PATH
 

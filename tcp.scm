@@ -34,12 +34,12 @@
 			   (get-curr-conns))))
 		(if target-connection
 		    (begin (set! curr-conn target-connection)
-			   ;; call the current state function TODO which sets a new one in the structure ? make sure
+			   ;; call the current state function
 			   ((vector-ref target-connection conn-state-function)))
 		    ;; no matching connection was found, if we have not yet
 		    ;; reached the maximum number of connections, establish a
 		    ;; new one
-		    (if (and (< (length (get-curr-conns)) ;; TODO this actually was a state function (tcp-listen)
+		    (if (and (< (length (get-curr-conns)) ; TODO do something if false ? 
 				(conf-ref curr-port conf-max-conns))
 			     ;; the handshake must begin with a SYN
 			     (exclusive-tcp-flag? SYN))

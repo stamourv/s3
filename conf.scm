@@ -1,9 +1,7 @@
 ;;;; Vincent St-Amour
 ;;;; conf.scm
 
-;; TODO find ip and mac by asking the kernel ?
 (define my-mac '#u8(#x00 #x20 #xfc #x20 #x0d #x64))
-;; (define my-ip '#u8(172 16 96 215)) ;; TODO this is the real one that was assigned to the little machine
 (define my-ip '#u8(10 223 151 99)) ;; TODO this is the one for the original tests, won't work with the new ones
 (define broadcast-ip '#u8(255 255 255 255)) ;; TODO put in pkt ?
 (define my-address-mask '#u8(255 255 0 0)) ; TODO put this in conf file ?
@@ -14,11 +12,11 @@
 (define pkt-allocated-length 590)
 
 ;; list of IPs associated to MAC adresses
-(define rarp-mac-ip-alist ; TODO name ?
+(define rarp-mac-ip-alist
   (list (cons '#u8(23 34 45 56 67 78) '#u8(192 168 1 108))))
 
 
-(define ip-original-time-to-live 225) ; TODO put in conf file ? or pkt ?
+(define ip-original-time-to-live 225)
 
 ;; TCP configuration
 

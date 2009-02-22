@@ -1,9 +1,9 @@
 ;;;; Vincent St-Amour
 ;;;; gambit-compatibility.scm
 
-(include "~/recherche/s3/stack/files-to-load.scm")
+(include "files-to-load.scm")
 
-;; from srfi 66, present in picobit, but not gambit
+;; from srfi 66, present in picobit
 ;; TODO found this in tests, considered useful, changed the name to avoid clashes (which did happen when I tried the original tests, was a quite elusive bug)
 ;; copies from a u8vector "u8-src" to another u8vector "u8-dest"
 ;; TODO changed the name to match srfi 66

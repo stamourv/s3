@@ -4,7 +4,7 @@
 ;;;  general purpose procedures
 
 ;; member with a given predicate
-(define (memp pred l) ;; TODO name ? was search
+(define (memp pred l)
   (cond ((null? l) #f)
         ((pred (car l)) (car l))
         (else (memp pred (cdr l)))))

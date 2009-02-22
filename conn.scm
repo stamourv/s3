@@ -40,7 +40,7 @@
 (define conn-peer-portnum  8) ;; TODO same here
 (define conn-peer-mac      10) ;; TODO same here
 (define conn-active?       16) ; boolean ;: TODO find a way to do without
-(define tcp-self-seqnum    17) ;; TODO were calculated, but these were the only infos after state anyway
+(define tcp-self-seqnum    17)
 (define tcp-self-ack-units 21) ;; TODO what's that ?
 (define tcp-peer-seqnum    22) ;; TODO add conn- before ?
 (define tcp-attempts-count 26)
@@ -83,7 +83,7 @@
 ;; -2: the buffer itself (u8vector)
 ;;     the length is found in conf.scm and can be different for input and
 ;;     output buffers, with a maximum of 256 bytes
-;; TODO ARGH this is all broken, we'd need 2 pointers.
+;; TODO this is all broken, we'd need 2 pointers.
 ;;  for output buffer, one to show where to add the next data, and another to show the 1st unsent (or not acked)
 ;; for input, one for the stack to see where it can add, and the other that shows where the app reads
 ;; FIX THIS NOTHING CAN WORK WITHOUT (perhaps it does by subtrating amount, but it's disgusting)

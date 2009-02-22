@@ -29,7 +29,7 @@
 				    icmp-address-mask-request 0 2)
 	     (u8vector-copy! my-address-mask 0 pkt icmp-data 4)
 	     (icmp-encapsulation icmp-address-mask-reply 4))
-	    (else #f)))) ;; TODO remove
+	    (else #f)))) ;; TODO remove ?
 ;; TODO maybe have some better error handling
 ;; TODO do we accept any other requests ?
 ;; TODO send error cases to applications, as special tokens when they do the next operation
